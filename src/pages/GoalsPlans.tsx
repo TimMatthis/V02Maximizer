@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useAppState } from '../state/AppState'
+import type { Goal } from '../state/AppState'
 import type { FeatureWeights } from '../types'
 import { SimplifiedTreeSHAP } from '../utils/shapSimplified'
 import { calculatePriorities, severityStyles } from '../utils/priority'
@@ -14,6 +15,7 @@ export default function GoalsPlans() {
 
   const platform = state.activeModel
   const [planReady, setPlanReady] = useState(false)
+  const savedGoals = (state as any).savedGoals ?? []
   
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -69,7 +71,12 @@ export default function GoalsPlans() {
 
   const [targetValue, setTargetValue] = useState<number | null>(null)
   const defaultIncrement = platform === 'VO2' ? 2 : 15 // 2 ml/kg/min for VO2, 15W for Power
+  const [horizonWeeks, setHorizonWeeks] = useState<number>(8)
+  const [viewGoalId, setViewGoalId] = useState<string | null>(null)
   
+  const recommendedTarget = useMemo(() => Number((predictedNow + defaultIncrement).toFixed(1)), [predictedNow, defaultIncrement])
+  const recommendedHorizon = 8
+
   useEffect(() => {
     if (targetValue == null) setTargetValue(Number((predictedNow + defaultIncrement).toFixed(1)))
   }, [predictedNow, defaultIncrement, targetValue])
@@ -94,6 +101,99 @@ export default function GoalsPlans() {
 
   function clearOverrides() {
     dispatch({ type: 'resetFactors' })
+  }
+
+  // Save goal with assumptions derived from current scenario suggestions
+  function saveGoal() {
+    if (!targetValue) return
+    const personaId = persona.profile.id
+    const assumptions = Object.values(scenarioPlan.byCategory).flat().map(p => ({ factor: p.factor as keyof FeatureWeights, target: p.target }))
+    const goal: Goal = {
+      id: `${Date.now()}`,
+      personaId,
+      metric: platform,
+      createdAt: new Date().toISOString(),
+      baselineAtCreation: Number(predictedNow.toFixed(2)),
+      target: Number(targetValue.toFixed(2)),
+      horizonWeeks,
+      assumptions,
+      planHistory: [{ ts: new Date().toISOString(), assumptions, predictedAtSave: Number(predictedNow.toFixed(2)) }],
+    }
+    dispatch({ type: 'saveGoal', goal })
+  }
+
+  // Evaluate saved goals for this persona/metric whenever prediction updates
+  useEffect(() => {
+    const goals = savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform)
+    if (goals.length === 0) return
+    const now = new Date()
+    goals.forEach(g => {
+      const weeksElapsed = Math.max(0, (now.getTime() - new Date(g.createdAt).getTime()) / (7 * 86400000))
+      const current = Number(predictedNow.toFixed(2))
+      const delta = current - g.baselineAtCreation
+      const weeklyProgress = weeksElapsed > 0 ? delta / weeksElapsed : 0
+      const requiredWeeklyGain = (g.target - g.baselineAtCreation) / (g.horizonWeeks || 8)
+      const onTrack = weeklyProgress >= 0.9 * requiredWeeklyGain
+      dispatch({
+        type: 'updateGoalStatus',
+        id: g.id,
+        status: {
+          lastEvaluatedAt: now.toISOString(), current, delta, weeksElapsed, weeklyProgress, requiredWeeklyGain, onTrack,
+          suggestedAdjustment: onTrack ? 0 : (requiredWeeklyGain - weeklyProgress)
+        }
+      })
+    })
+  }, [predictedNow, persona.profile.id, platform])
+
+  // When ground-truth is present (measuredNow), apply a light online calibration to the active model
+  useEffect(() => {
+    if (measuredNow == null) return
+    // Respect calibration toggle per model
+    const enabled = state.calibration?.[platform] ?? true
+    if (enabled) {
+      dispatch({ type: 'applyOnlineCalibration', model: platform, features: currentFeatures, measured: measuredNow, predicted: predictedNow })
+    }
+  }, [measuredNow])
+
+  // Append a plan snapshot to a specific goal
+  function savePlanUpdate(goalId: string) {
+    const assumptions = Object.values(scenarioPlan.byCategory).flat().map(p => ({ factor: p.factor as keyof FeatureWeights, target: p.target }))
+    dispatch({ type: 'appendPlanSnapshot', id: goalId, snapshot: { ts: new Date().toISOString(), assumptions, predictedAtSave: Number(predictedNow.toFixed(2)) } })
+  }
+
+  // Derive a plain-English weekly focus from a plan's assumptions
+  function focusFromAssumptions(assumptions: { factor: keyof FeatureWeights; target: number }[]) {
+    const tags: string[] = []
+    const cur = currentFeatures as any
+    const getDelta = (k: keyof FeatureWeights) => (assumptions.find(a => a.factor === k)?.target ?? cur[k]) - (cur[k] as number)
+    const push = (label: string) => { if (!tags.includes(label)) tags.push(label) }
+
+    // Sleep / Recovery signals
+    const sleepDelta = getDelta('sleepScore')
+    if (sleepDelta > 0.5) push(`Sleep focus (~${Math.round((cur['sleepScore'] as number) + sleepDelta)})`)
+    const deepDelta = getDelta('deepSleepMinutes')
+    if (deepDelta > 5) push('More deep sleep')
+    const hrvDelta = getDelta('hrv')
+    if (hrvDelta > 0.5) push('HRV recovery work')
+    const rhrDelta = getDelta('restingHeartRate')
+    if (rhrDelta < -0.3) push('Lower RHR (easy days)')
+    const readinessDelta = getDelta('readinessScore')
+    if (readinessDelta > 0.5) push('Readiness monitoring')
+
+    // Training block intent
+    const volDelta = getDelta('weeklyVolume')
+    const loadDelta = getDelta('trainingLoad')
+    const intDelta = getDelta('workoutIntensity')
+    if (volDelta > 1.5) push('Endurance volume')
+    if (loadDelta > 5) push('Progressive load')
+    if (intDelta > 0.3) push('Intervals / intensity')
+
+    // Recovery management
+    const recDelta = getDelta('recoveryTime')
+    if (recDelta > 1) push('Extra recovery time')
+
+    // Limit to 3–4 concise tags
+    return tags.slice(0, 4)
   }
 
   // Initialize chat with AI greeting when plan is ready
@@ -252,6 +352,19 @@ export default function GoalsPlans() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <div className="mx-auto max-w-7xl px-6 py-12">
+        {/* Summary card */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-card p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="inline-block h-2 w-6 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"></span>
+            <div className="text-lg font-semibold">
+              Your current {platform === 'VO2' ? 'VO2max' : 'Power'} is {predictedNow.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}
+            </div>
+          </div>
+          <div className="text-sm text-gray-700">
+            Recommended target: <span className="font-semibold">{recommendedTarget.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</span> &middot; Recommended horizon: <span className="font-semibold">{recommendedHorizon} weeks</span>
+          </div>
+        </div>
+        </div>
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight flex items-center gap-3">
             <span className="text-primary-600">🎯</span>
@@ -382,7 +495,14 @@ export default function GoalsPlans() {
                     <input type="number" step={platform === 'VO2' ? 0.5 : 5} className="w-24 text-center rounded-md border px-2 py-1 appearance-none" value={targetValue ?? ''} onChange={(e) => { const val = parseFloat(e.target.value); if (Number.isNaN(val)) { setTargetValue(null); return } const minIncrement = platform === 'VO2' ? 0.1 : 1; const minGoal = Number((predictedNow + minIncrement).toFixed(1)); setTargetValue(Math.max(val, minGoal)) }} />
                     <button type="button" aria-label="Increase target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = platform === 'VO2' ? 0.5 : 5; const base = targetValue ?? Number((predictedNow + step).toFixed(1)); const next = Number((base + step).toFixed(1)); setTargetValue(next) }}>+</button>
                     <span>{platform === 'VO2' ? 'ml/kg/min' : 'W'}</span>
+                    <span className="ml-3">Horizon:</span>
+                    <input type="number" min={1} className="w-16 text-center rounded-md border px-2 py-1 appearance-none" value={horizonWeeks} onChange={(e)=>setHorizonWeeks(Math.max(1, Number(e.target.value)))} />
+                    <span>wks</span>
                   </div>
+                  <label className="ml-3 text-xs inline-flex items-center gap-1" title="Apply small online updates when measured values are present">
+                    <input type="checkbox" checked={state.calibration?.[platform] ?? true} onChange={(e)=>dispatch({ type: 'setCalibration', model: platform, enabled: e.target.checked })} />
+                    Online calibration
+                  </label>
                   <button
                     type="button"
                     className="ml-3 rounded-full bg-emerald-600 text-white px-4 py-1.5 text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
@@ -391,13 +511,75 @@ export default function GoalsPlans() {
                   >
                     Generate Plan
                   </button>
+                  <button
+                    type="button"
+                    className="ml-2 rounded-full border px-4 py-1.5 text-sm hover:bg-gray-50"
+                    onClick={saveGoal}
+                    disabled={targetValue == null}
+                    title="Save goal with current target, horizon, and factor assumptions"
+                  >
+                    Save Goal
+                  </button>
                 </div>
                 {planReady && (
                   <div className="text-sm text-gray-600 mt-1">Estimated gain from plan: {scenarioPlan.totalGain.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'} {scenarioPlan.meets ? "Meets target" : "May need more time/consistency"}</div>
                 )}
+                {/* If any saved goal is off track, surface a gentle nudge */}
+                {(() => {
+                  const goals = state.savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform)
+                  const off = goals.find(g => g.status && !g.status.onTrack)
+                  if (!off || !off.status) return null
+                  const adj = off.status.suggestedAdjustment ?? 0
+                  const unit = platform === 'VO2' ? 'ml/kg/min / wk' : 'W / wk'
+                  return (
+                    <div className="text-xs text-amber-700 mt-1">
+                      Not quite on track. Aim for ~{adj.toFixed(2)} {unit} more weekly progress or adjust factor targets.
+                    </div>
+                  )
+                })()}
               </div>
             </div>
 
+            {/* Saved Goals */}
+            {savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).length > 0 && (
+              <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 col-span-3 mt-4">
+                <div className="text-lg font-semibold mb-2">Saved Goals</div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-600">
+                      <th className="py-1">Created</th>
+                      <th className="py-1">Baseline</th>
+                      <th className="py-1">Target</th>
+                      <th className="py-1">Horizon</th>
+                      <th className="py-1">Current</th>
+                      <th className="py-1">Weekly</th>
+                      <th className="py-1">Required</th>
+                      <th className="py-1">On track</th>
+                      <th className="py-1">Adj./wk</th>
+                      <th className="py-1">Focus (this week)</th>\n                      <th className="py-1">Changes</th>\n                      <th className="py-1">Plan history</th>
+                      <th className="py-1">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).map(g => (
+                      <tr key={g.id} className="border-t">
+                        <td className="py-1 text-gray-700">{new Date(g.createdAt).toLocaleDateString()}</td>
+                        <td className="py-1">{g.baselineAtCreation.toFixed(1)}</td>
+                        <td className="py-1">{g.target.toFixed(1)}</td>
+                        <td className="py-1">{g.horizonWeeks}w</td>
+                        <td className="py-1">{g.status?.current?.toFixed(1) ?? '-'}</td>
+                        <td className="py-1">{g.status ? g.status.weeklyProgress.toFixed(2) : '-'}</td>
+                        <td className="py-1">{g.status ? g.status.requiredWeeklyGain.toFixed(2) : '-'}</td>
+                        <td className="py-1"><span className={g.status?.onTrack ? 'text-green-700' : 'text-amber-700'}>{g.status?.onTrack ? 'Yes' : 'Check'}</span></td>
+                        <td className="py-1">{g.status ? (g.status.suggestedAdjustment ?? 0).toFixed(2) : '-'}</td>
+                        <td className="py-1">{(g.planHistory?.length ?? 0)} entries</td>
+                        <td className="py-1"><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50" onClick={() => savePlanUpdate(g.id)} title="Append current plan assumptions to this goal">Save Plan Update</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {planReady && (['Sleep','Recovery','Training'] as const).map((cat) => (
               <div key={cat} className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
                 <div className="text-xl font-bold mb-4 flex items-center gap-2">
@@ -610,11 +792,6 @@ export default function GoalsPlans() {
     </div>
   )
 }
-
-
-
-
-
 
 
 
