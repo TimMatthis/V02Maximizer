@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 /* Simple slide-in animation for banners */
 @keyframes slide-in-right {
@@ -8,4 +8,14 @@
 
 .animate-slide-in {
   animation: slide-in-right 240ms ease-out both;
+}
+
+/* Improve number input spinner visuals by hiding native spinners; we add custom +/- controls in UI */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
 }

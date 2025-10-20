@@ -43,22 +43,28 @@ export default function PerformanceMetrics({ history }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-        <div className="text-sm text-neutral">Prediction Accuracy</div>
-        <div className="text-3xl font-semibold">{(metrics.predictionAccuracy * 100).toFixed(1)}%</div>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-primary-600 text-lg">📈</span>
+        <h3 className="text-lg font-bold text-gray-900">Performance Metrics</h3>
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-        <div className="text-sm text-neutral">Mean Absolute Error</div>
-        <div className="text-3xl font-semibold">{metrics.mae.toFixed(2)} ml/kg/min</div>
-      </div>
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-        <div className="text-sm text-neutral">R²</div>
-        <div className="text-3xl font-semibold">{metrics.r2.toFixed(2)}</div>
-      </div>
-      <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4">
-        <div className="text-sm text-neutral">Data Points Used</div>
-        <div className="text-3xl font-semibold">{metrics.dataPoints}</div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-gradient-to-br from-primary-50 to-primary-100/50 p-3 border border-primary-200">
+          <div className="text-xs font-medium text-neutral mb-1">Prediction Accuracy</div>
+          <div className="text-2xl font-bold text-primary-700">{(metrics.predictionAccuracy * 100).toFixed(1)}%</div>
+        </div>
+        <div className="rounded-lg bg-gradient-to-br from-gray-50 to-gray-100/50 p-3 border border-gray-200">
+          <div className="text-xs font-medium text-neutral mb-1">Mean Abs Error</div>
+          <div className="text-2xl font-bold text-gray-700">{metrics.mae.toFixed(2)}</div>
+        </div>
+        <div className="rounded-lg bg-gradient-to-br from-athletic-blue/10 to-athletic-cyan/10 p-3 border border-athletic-cyan/30">
+          <div className="text-xs font-medium text-neutral mb-1">R² Score</div>
+          <div className="text-2xl font-bold text-athletic-cyan">{metrics.r2.toFixed(2)}</div>
+        </div>
+        <div className="rounded-lg bg-gradient-to-br from-athletic-orange/10 to-athletic-amber/10 p-3 border border-athletic-orange/30">
+          <div className="text-xs font-medium text-neutral mb-1">Data Points</div>
+          <div className="text-2xl font-bold text-athletic-orange">{metrics.dataPoints}</div>
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { useAppState } from '../state/AppState'
 import type { FeatureWeights } from '../types'
 import { SimplifiedTreeSHAP } from '../utils/shapSimplified'
@@ -11,7 +11,8 @@ export default function GoalsPlans() {
   const history = persona.history
   const day = history[state.activeIndex]
 
-  const [vo2Targeted, setVo2Targeted] = useState(true)
+  const [platform, setPlatform] = useState<'VO2' | 'Power'>('VO2')
+  const [planReady, setPlanReady] = useState(false)
 
   const currentFeatures: FeatureWeights = useMemo(() => ({
     trainingLoad: state.factorOverrides.trainingLoad ?? day.trainingLoad,
@@ -47,6 +48,7 @@ export default function GoalsPlans() {
     () => persona.profile.baselineVO2Max + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0),
     [shapForCurrent, persona.profile.baselineVO2Max],
   )
+  const measuredNow = day.actualVO2Max ?? null
 
   const [targetVO2, setTargetVO2] = useState<number | null>(null)
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function GoalsPlans() {
       const mid = (p.optimalRange[0] + p.optimalRange[1]) / 2
       dispatch({ type: 'setFactor', key: p.factor as keyof FeatureWeights, value: mid })
     }
-    dispatch({ type: 'saveScenario', name: 'VO2 Plan' })
+    dispatch({ type: 'saveScenario', name: `${platform} Plan` })
   }
 
   function clearOverrides() {
@@ -138,31 +140,63 @@ export default function GoalsPlans() {
         dispatch({ type: 'setFactor', key: p.factor as keyof FeatureWeights, value: p.target })
       }
     }
-    dispatch({ type: 'saveScenario', name: `VO2 to ${targetVO2?.toFixed(1)}` })
+    dispatch({ type: 'saveScenario', name: `${platform} to ${targetVO2?.toFixed(1)}` })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-7xl px-6 py-8">
-        <div className="mb-2 text-xs text-gray-600">Active user: {persona.profile.name}</div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-6 tracking-tight">Goals & Plans</h1>
-
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-4 mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="inline-block h-2 w-6 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"></span>
-            <div className="text-lg font-semibold">Target VO2max</div>
-            <div className="text-sm text-gray-600">Current prediction: {predictedNow.toFixed(1)} ml/kg/min</div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <div className="mx-auto max-w-7xl px-6 py-12">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight flex items-center gap-3">
+            <span className="text-primary-600">??</span>
+            Goals & Training Plans
+          </h1>
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-sm text-gray-600">Active user: <span className="font-semibold text-gray-900">{persona.profile.name}</span></span>
+            <div className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 text-primary-800 border border-primary-300 px-4 py-2 shadow-sm">
+              <span className="text-sm font-medium">Current {platform}</span>
+              <span className="rounded-lg bg-white px-3 py-1 text-primary-900 border border-primary-400 font-bold text-lg">
+                {predictedNow.toFixed(1)}
+              </span>
+              <span className="text-xs">{platform === 'VO2' ? 'ml/kg/min' : 'W'}</span>
+              {platform === 'VO2' && measuredNow != null && (
+                <span className="text-xs text-primary-700">(Measured: {measuredNow.toFixed(1)})</span>
+              )}
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={vo2Targeted} onChange={(e) => setVo2Targeted(e.target.checked)} />
-            <span>Focus plan on VO2</span>
-          </label>
         </div>
 
-        {vo2Targeted && (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="inline-block h-2 w-6 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"></span>
+            <div className="text-lg font-semibold">Target {platform === 'VO2' ? 'VO2max' : 'Power'}</div>
+            <div className="text-sm text-gray-600">Current prediction: {predictedNow.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</div>
+          </div>
+          <div className="flex items-center text-sm rounded-full border overflow-hidden">
+            <button
+              type="button"
+              className={`px-3 py-1.5 ${platform === 'VO2' ? 'bg-primary-600 text-white' : 'bg-white'}`}
+              onClick={() => setPlatform('VO2')}
+            >
+              VO2
+            </button>
+            <button
+              type="button"
+              className={`px-3 py-1.5 ${platform === 'Power' ? 'bg-primary-600 text-white' : 'bg-white'}`}
+              onClick={() => setPlatform('Power')}
+            >
+              Power
+            </button>
+          </div>
+        </div>
+
+        (
           <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
-              <div className="text-lg font-semibold mb-3">Top Factors For Your VO2</div>
+              <div className="text-xl font-bold mb-4 flex items-center gap-2">
+                <span className="text-primary-600">??</span>
+                Top Factors For Your VO2
+              </div>
               <div className="space-y-3">
                 {topFactors.map(([k, v]) => {
                   const pct = Math.round(v.percentageContribution * 100)
@@ -180,7 +214,8 @@ export default function GoalsPlans() {
                       <div className="h-2 w-full bg-gray-100 rounded mt-1">
                         <div className="h-2 bg-sky-500 rounded" style={{ width: `${Math.max(8, pct)}%` }} />
                       </div>
-                      <div className="mt-1 text-xs text-gray-700">Current: {Number(v.value).toFixed(1)} • {tip}</div>
+                      <div className="mt-1 text-xs text-gray-700">Current: {Number(v.value).toFixed(1)} - {tip}</div>
+                      <div className="text-xs text-gray-600">Impact: {v.shapValue >= 0 ? '+' : ''}{v.shapValue.toFixed(2)} ml/kg/min</div>
                     </div>
                   )
                 })}
@@ -188,7 +223,10 @@ export default function GoalsPlans() {
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
-              <div className="text-lg font-semibold mb-3">Simple Plan (Targets What Matters)</div>
+              <div className="text-xl font-bold mb-4 flex items-center gap-2">
+                <span className="text-primary-600">??</span>
+                Simple Plan (Targets What Matters)
+              </div>
               <div className="space-y-3">
                 {topPlan.map((p) => (
                   <div key={p.factor} className={`rounded-lg border p-3 ${severityStyles[p.severity]}`}>
@@ -196,34 +234,52 @@ export default function GoalsPlans() {
                       <div className="text-sm font-semibold capitalize">{p.factor}</div>
                       <div className="text-xs opacity-80">{p.timeToImpact}</div>
                     </div>
-                    <div className="text-xs opacity-90">Current: {p.currentValue.toFixed(1)} • Optimal: {p.optimalRange[0]}–{p.optimalRange[1]} • Impact: {p.currentImpact.toFixed(1)}</div>
+                    <div className="text-xs opacity-90">Current: {p.currentValue.toFixed(1)} - Optimal: {p.optimalRange[0]}-{p.optimalRange[1]} - Impact: {p.currentImpact.toFixed(1)}</div>
                     <div className="text-sm mt-1">{p.actionText}</div>
                   </div>
                 ))}
               </div>
               <div className="mt-4 flex gap-2">
-                <button onClick={applySuggestedTargets} className="rounded-full bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 transition-colors">Apply Suggestions</button>
+                <button onClick={applySuggestedTargets} className="rounded-full bg-emerald-600 text-white px-4 py-2 text-sm font-semibold hover:bg-emerald-700 transition-colors">Apply Suggestions</button>
                 <button onClick={clearOverrides} className="rounded-full border px-4 py-2 text-sm hover:bg-gray-50">Clear Overrides</button>
               </div>
             </div>
           </div>
         )}
 
-        {vo2Targeted && targetVO2 != null && (
+        (
           <div className="mt-6 grid grid-cols-3 gap-6 max-lg:grid-cols-1">
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 col-span-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-lg font-semibold">Scenario Planner</div>
-                <div className="text-sm text-gray-700">Current: {predictedNow.toFixed(1)} • Target: 
-                  <input type="number" step={0.5} className="ml-2 w-24 rounded-md border px-2 py-1" value={targetVO2} onChange={(e) => setTargetVO2(parseFloat(e.target.value))} /> ml/kg/min
+                <div className="text-sm text-gray-700 flex items-center gap-2">Current: {predictedNow.toFixed(1)} - Target:
+                  <div className="inline-flex items-center gap-1 ml-2">
+                    <button type="button" aria-label="Decrease target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = 0.5; const minGoal = Number((predictedNow + 0.1).toFixed(1)); const base = targetVO2 ?? Number((predictedNow + step).toFixed(1)); const next = Math.max(minGoal, Number((base - step).toFixed(1))); setTargetVO2(next) }}>-</button>
+                    <input type="number" step={0.5} className="w-24 text-center rounded-md border px-2 py-1 appearance-none" value={targetVO2 ?? ''} onChange={(e) => { const val = parseFloat(e.target.value); if (Number.isNaN(val)) { setTargetVO2(null); return } const minGoal = Number((predictedNow + 0.1).toFixed(1)); setTargetVO2(Math.max(val, minGoal)) }} />
+                    <button type="button" aria-label="Increase target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = 0.5; const base = targetVO2 ?? Number((predictedNow + step).toFixed(1)); const next = Number((base + step).toFixed(1)); setTargetVO2(next) }}>+</button>
+                    <span>ml/kg/min</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ml-3 rounded-full bg-emerald-600 text-white px-4 py-1.5 text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    onClick={() => setPlanReady(true)}
+                    disabled={targetVO2 == null}
+                  >
+                    Generate Plan
+                  </button>
                 </div>
+                {planReady && (
+                  <div className="text-sm text-gray-600 mt-1">Estimated gain from plan: {scenarioPlan.totalGain.toFixed(1)} ml/kg/min {scenarioPlan.meets ? "Meets target" : "May need more time/consistency"}</div>
+                )}
               </div>
-              <div className="text-sm text-gray-600 mt-1">Estimated gain from plan: {scenarioPlan.totalGain.toFixed(1)} ml/kg/min {scenarioPlan.meets ? '• Meets target' : '• May need more time/consistency'}</div>
             </div>
 
-            {(['Sleep','Recovery','Training'] as const).map((cat) => (
+            {planReady && (['Sleep','Recovery','Training'] as const).map((cat) => (
               <div key={cat} className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
-                <div className="text-lg font-semibold mb-3">{cat} Plan</div>
+                <div className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <span className="text-primary-600">{cat === 'Training' ? '??' : cat === 'Sleep' ? '??' : '??'}</span>
+                  {cat} Plan
+                </div>
                 <div className="space-y-3">
                   {scenarioPlan.byCategory[cat]?.map((p) => (
                     <div key={p.factor} className="rounded-lg border bg-gray-50 p-3">
@@ -232,20 +288,93 @@ export default function GoalsPlans() {
                         <div className="text-xs text-gray-700">+{Math.max(0, p.gain).toFixed(1)} ml/kg/min</div>
                       </div>
                       <div className="text-xs text-gray-700 mt-1">{p.note}</div>
-                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} → Target {p.target.toFixed(1)}</div>
+                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} {'->'} Target {p.target.toFixed(1)}</div>
                     </div>
                   ))}
                 </div>
+                {cat === 'Training' && (() => {
+                  const items = Object.fromEntries((scenarioPlan.byCategory['Training'] || []).map((i) => [i.factor, i])) as any
+                  const curVol = currentFeatures.weeklyVolume
+                  const tgtVol = (items.weeklyVolume?.target ?? curVol) as number
+                  const tgtInt = (items.workoutIntensity?.target ?? currentFeatures.workoutIntensity) as number
+                  const sessions = Math.min(7, Math.max(3, Math.round(tgtVol / 12)))
+                  const easyPct = 0.7
+                  const modPct = tgtInt >= 7.5 ? 0.15 : 0.2
+                  const hardPct = 1 - easyPct - modPct
+                  const easyVol = Math.round(tgtVol * easyPct)
+                  const modVol = Math.round(tgtVol * modPct)
+                  const hardVol = Math.round(tgtVol * hardPct)
+                  const restDays = Math.max(1, 7 - sessions)
+                  return (
+                    <div className="mt-4 rounded-lg border p-4">
+                      <div className="text-sm font-semibold mb-2">Training Composition</div>
+                      <div className="text-xs text-gray-700 mb-2">Weekly volume: {curVol.toFixed(0)} {'->'} {tgtVol.toFixed(0)} (delta {Math.max(0, tgtVol - curVol).toFixed(0)})</div>
+                      <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
+                        <li>{sessions} sessions/week, {restDays} rest day(s)</li>
+                        <li>Easy: ~{Math.round(easyPct*100)}% (~{easyVol}) · {Math.max(2, Math.round(sessions*easyPct))} easy sessions</li>
+                        <li>Moderate: ~{Math.round(modPct*100)}% (~{modVol}) · {Math.max(1, Math.round(sessions*modPct))} tempo/steady sessions</li>
+                        <li>Hard: ~{Math.round(hardPct*100)}% (~{hardVol}) · {Math.max(1, Math.round(sessions*hardPct))} interval/hill session</li>
+                        <li>Target intensity index ~= {tgtInt.toFixed(1)} (keep hard days hard, easy days easy)</li>
+                      </ul>
+                    </div>
+                  )
+                })()}
+                {cat === 'Sleep' && (() => {
+                  const items = Object.fromEntries((scenarioPlan.byCategory['Sleep'] || []).map((i) => [i.factor, i])) as any
+                  const tgtSleep = (items.sleepScore?.target ?? currentFeatures.sleepScore) as number
+                  const tgtDeep = (items.deepSleepMinutes?.target ?? currentFeatures.deepSleepMinutes) as number
+                  const tgtHRV = (items.hrv?.target ?? currentFeatures.hrv) as number
+                  return (
+                    <div className="mt-4 rounded-lg border p-4">
+                      <div className="text-sm font-semibold mb-2">Sleep Actions</div>
+                      <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
+                        <li>Bedtime routine: 60-90 min wind-down, dim lights</li>
+                        <li>Target sleep score {'>='} {Math.round(tgtSleep)}</li>
+                        <li>Deep sleep: {Math.round(tgtDeep)} min (cool room, consistent schedule)</li>
+                        <li>HRV support: 5-10 min breathwork before bed (aim {Math.round(tgtHRV)} ms)</li>
+                      </ul>
+                    </div>
+                  )
+                })()}
+                {cat === 'Recovery' && (() => {
+                  const items = Object.fromEntries((scenarioPlan.byCategory['Recovery'] || []).map((i) => [i.factor, i])) as any
+                  const tgtReady = (items.readinessScore?.target ?? currentFeatures.readinessScore) as number
+                  const tgtRhr = (items.restingHeartRate?.target ?? currentFeatures.restingHeartRate) as number
+                  const tgtRecH = (items.recoveryTime?.target ?? currentFeatures.recoveryTime) as number
+                  return (
+                    <div className="mt-4 rounded-lg border p-4">
+                      <div className="text-sm font-semibold mb-2">Recovery Actions</div>
+                      <ul className="text-sm text-gray-700 space-y-1 list-disc pl-5">
+                        <li>Respect rest: {Math.max(1, 7 - Math.min(7, Math.max(3, Math.round(((items.weeklyVolume?.target ?? currentFeatures.weeklyVolume) as number) / 12))))} rest day(s)/week</li>
+                        <li>Readiness: aim {'>='} {Math.round(tgtReady)}; back off intensity when low</li>
+                        <li>Recovery window: ~{Math.round(tgtRecH)}h; keep active recovery if needed</li>
+                        <li>RHR: trend toward {Math.round(tgtRhr)} bpm via easy days, hydration, and sleep</li>
+                      </ul>
+                    </div>
+                  )
+                })()}
               </div>
             ))}
 
-            <div className="col-span-3 flex gap-2">
-              <button onClick={applyScenarioPlan} className="rounded-full bg-blue-600 text-white px-5 py-2 text-sm font-semibold hover:bg-blue-700 transition-colors">Apply Scenario & Save</button>
-              <button onClick={clearOverrides} className="rounded-full border px-5 py-2 text-sm hover:bg-gray-50">Reset</button>
-            </div>
+            {planReady && (
+              <div className="col-span-3 flex gap-2">
+                <button onClick={applyScenarioPlan} className="rounded-full bg-emerald-600 text-white px-5 py-2 text-sm font-semibold hover:bg-emerald-700 transition-colors">Apply Scenario & Save</button>
+                <button onClick={clearOverrides} className="rounded-full border px-5 py-2 text-sm hover:bg-gray-50">Reset</button>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
   )
 }
+
+
+
+
+
+
+
+
+
+

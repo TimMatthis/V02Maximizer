@@ -1,12 +1,13 @@
 {
   "name": "vo2maximiser",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server/index.js"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.14",
@@ -21,6 +22,9 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "d3": "^7.9.0",
     "lodash": "^4.17.21",
     "mathjs": "^15.0.0",

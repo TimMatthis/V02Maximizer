@@ -18,22 +18,28 @@ export default function WeightEvolution({ history }: Props) {
     byWeek.push(obj)
   }
 
-  const colors = ['#1E40AF', '#0EA5E9', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280', '#059669', '#DC2626', '#111827']
+  const colors = ['#22c55e', '#0ea5e9', '#14b8a6', '#8b5cf6', '#f59e0b', '#ef4444', '#64748b', '#059669', '#dc2626', '#111827']
 
   return (
-    <div style={{ width: '100%', height: 300 }}>
-      <ResponsiveContainer>
-        <LineChart data={byWeek} margin={{ left: 16, right: 16, top: 8, bottom: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="week" />
-          <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} />
-          <Tooltip formatter={(v: any) => `${(Number(v) * 100).toFixed(1)}%`} />
-          <Legend />
-          {keys.slice(0, 6).map((k, i) => (
-            <Line key={k} type="monotone" dataKey={k} name={k} stroke={colors[i % colors.length]} dot={false} />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5">
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-primary-600 text-lg">📊</span>
+        <h3 className="text-lg font-bold text-gray-900">Weight Evolution</h3>
+      </div>
+      <div style={{ width: '100%', height: 250 }}>
+        <ResponsiveContainer>
+          <LineChart data={byWeek} margin={{ left: 0, right: 0, top: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis dataKey="week" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={(v) => `${(v * 100).toFixed(0)}%`} tick={{ fontSize: 12 }} />
+            <Tooltip formatter={(v: any) => `${(Number(v) * 100).toFixed(1)}%`} contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }} />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            {keys.slice(0, 6).map((k, i) => (
+              <Line key={k} type="monotone" dataKey={k} name={k} stroke={colors[i % colors.length]} strokeWidth={2} dot={false} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }
