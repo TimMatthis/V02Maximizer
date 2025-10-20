@@ -350,7 +350,7 @@ export default function GoalsPlans() {
 
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
               <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                <span className="text-primary-600">??</span>
+                <span className="text-primary-600">📈</span>
                 Simple Plan (Targets What Matters)
               </div>
               <div className="space-y-3">

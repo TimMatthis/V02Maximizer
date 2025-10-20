@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { useAppState } from '../state/AppState'
 import { POPULATION_WEIGHTS_VO2, POPULATION_WEIGHTS_POWER } from '../utils/personas'
 import AdvancedFactorControls from '../components/AdvancedFactorControls'
+import SingleFactorControl from '../components/SingleFactorControl'
 import DualTimeline from '../components/DualTimeline'
 import PredictionDisplay from '../components/PredictionDisplay'
 import SHAPWaterfall from '../components/SHAPWaterfall'
 import ForcePlot from '../components/d3/ForcePlot'
 import ImportanceRanking from '../components/ImportanceRanking'
 import WeightEvolution from '../components/WeightEvolution'
+import { calculatePriorities } from '../utils/priority'
 import PerformanceMetrics from '../components/PerformanceMetrics'
 import Insights from '../components/Insights'
 import DependencyPlots from '../components/DependencyPlots'
@@ -70,6 +72,22 @@ export default function DashboardView() {
   }, [history, currentFeatures, backgroundMean, baselineValue, personalWeights, state.activeModel])
 
   const predictedNow = useMemo(() => baselineValue + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0), [shapForCurrent, baselineValue])
+
+  const priorities = useMemo(() => (
+    calculatePriorities(currentFeatures, shapForCurrent, history)
+  ), [currentFeatures, shapForCurrent, history])
+
+  const topPriorityFactors = useMemo(() => (
+    priorities.slice(0, 5).map((p) => p.factor)
+  ), [priorities])
+
+  const allFactors = useMemo(() => (
+    Object.keys(populationWeights)
+  ), [populationWeights])
+
+  const otherFactors = useMemo(() => (
+    allFactors.filter((f) => !topPriorityFactors.includes(f))
+  ), [allFactors, topPriorityFactors])
 
   const personalizationPct = Math.min(1, persona.profile.daysOfData / 30)
   const personalizationLabel = persona.profile.daysOfData < 14 ? 'Using general model – personalization begins after ~2 weeks' : persona.profile.daysOfData < 30 ? `Model is ${(personalizationPct * 100).toFixed(0)}% personalized` : 'Fully personalized model'
@@ -139,29 +157,81 @@ export default function DashboardView() {
               </div>
             </div>
           </div>
-          <AdvancedFactorControls
-            history={history}
-            dayIndex={state.activeIndex}
-            population={populationWeights}
-            personal={personalWeights}
-            overrides={state.factorOverrides}
-            shap={shapForCurrent}
-            onChange={(k, v) => dispatch({ type: 'setFactor', key: k, value: v })}
-            onResetAll={() => dispatch({ type: 'resetFactors' })}
-            onOptimize={() => {
-              const next: Partial<FeatureWeights> = {}
-              for (const [k, f] of Object.entries(shapForCurrent.features)) {
-                next[k as keyof FeatureWeights] = (f.shapValue >= 0 ? history.reduce((a, d) => Math.max(a, (d as any)[k] as number), -Infinity) : history.reduce((a, d) => Math.min(a, (d as any)[k] as number), Infinity)) as number
-              }
-              for (const [k, v] of Object.entries(next)) dispatch({ type: 'setFactor', key: k as keyof FeatureWeights, value: v as number })
-            }}
-            onSaveScenario={() => dispatch({ type: 'saveScenario', name: 'Scenario ' + (state.savedScenarios.length + 1) })}
-          />
+          {/* Controls are integrated with priority cards below to avoid duplication */}
         </aside>
 
-        <section className="col-span-6 flex flex-col gap-6 max-lg:col-span-12">
+        <section className="col-span-9 flex flex-col gap-6 max-xl:col-span-8 max-lg:col-span-12">
           {/* Priority hierarchy panel */}
-          <PriorityPanel current={currentFeatures} shap={shapForCurrent} history={history} onAdjust={() => { /* handled via sliders */ }} />
+          {/* Expanded single-card rows: Priority + integrated control */}
+          <div className="grid grid-cols-12 gap-4 max-lg:grid-cols-1">
+            {priorities.slice(0, 5).map((p) => (
+              <div key={p.factor} className="contents max-lg:block">
+                <div className={`col-span-12 rounded-2xl border shadow-card hover:shadow-card-hover transition-all duration-300 p-4 ${
+                  p.severity === 'critical' ? 'bg-red-100 border-red-300' :
+                  p.severity === 'high' ? 'bg-amber-100 border-amber-300' :
+                  p.severity === 'moderate' ? 'bg-blue-100 border-blue-300' :
+                  p.severity === 'low' ? 'bg-gray-100 border-gray-300' :
+                  'bg-emerald-100 border-emerald-300'
+                }`}>
+                  <div className="grid grid-cols-12 gap-4 max-lg:grid-cols-1">
+                    <div className="col-span-5 max-lg:col-span-12">
+                      <div className="text-sm font-semibold text-gray-800 mb-2">🎯 Priority {p.rank}: <span className="capitalize">{p.factor}</span></div>
+                      <div className="text-xs opacity-90 mb-2">Current: {p.currentValue.toFixed(1)} | Optimal: {p.optimalRange[0]}–{p.optimalRange[1]} | Impact: {p.currentImpact.toFixed(1)}</div>
+                      <div className="text-sm">{p.recommendation}</div>
+                      <div className="mt-2">
+                        <a href="/goals" className="rounded-full border px-3 py-1 text-xs hover:bg-white/40 inline-flex items-center">Set Goal</a>
+                      </div>
+                    </div>
+                    <div className="col-span-7 max-lg:col-span-12">
+                      <SingleFactorControl
+                        history={history}
+                        dayIndex={state.activeIndex}
+                        factorKey={p.factor}
+                        overrides={state.factorOverrides}
+                        shap={shapForCurrent}
+                        personal={personalWeights}
+                        population={populationWeights}
+                        onChange={(k, v) => dispatch({ type: 'setFactor', key: k, value: v })}
+                        unit={state.activeModel === 'VO2' ? 'ml/kg/min' : 'W'}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Render non-priority controls below as simple control cards */}
+          {otherFactors.length > 0 && (
+            <>
+              <div className="border-t border-gray-200 my-4"></div>
+              <div className="mb-2 text-sm font-semibold text-gray-700">Other factors</div>
+              <div className="grid grid-cols-12 gap-4 max-lg:grid-cols-1">
+                {otherFactors.map((factor) => (
+                  <div key={factor} className="col-span-6 max-lg:col-span-12">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                      <div className="text-sm font-semibold text-gray-800 mb-2 capitalize">{factor}</div>
+                      <SingleFactorControl
+                        history={history}
+                        dayIndex={state.activeIndex}
+                        factorKey={factor}
+                        overrides={state.factorOverrides}
+                        shap={shapForCurrent}
+                        personal={personalWeights}
+                        population={populationWeights}
+                        onChange={(k, v) => dispatch({ type: 'setFactor', key: k, value: v })}
+                        unit={state.activeModel === 'VO2' ? 'ml/kg/min' : 'W'}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Personalized Insights below controls */}
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5">
+            <Insights personal={personalWeights} population={populationWeights} modelType={state.activeModel} />
+          </div>
           <PredictionDisplay predicted={predictedNow} baseline={baselineValue} modelType={state.activeModel} />
 
           <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5">
@@ -196,13 +266,19 @@ export default function DashboardView() {
               <DependencyPlots history={history} factors={Object.keys(populationWeights).slice(0, 4)} />
             )}
           </div>
+
+          {/* Place weight evolution and performance metrics inline below the charts */}
+          <div className="grid grid-cols-12 gap-4 max-lg:grid-cols-1">
+            <div className="col-span-6 max-lg:col-span-12">
+              <WeightEvolution history={history} />
+            </div>
+            <div className="col-span-6 max-lg:col-span-12">
+              <PerformanceMetrics history={history} />
+            </div>
+          </div>
         </section>
 
-        <aside className="col-span-3 flex flex-col gap-4 max-lg:col-span-12">
-          <WeightEvolution history={history} />
-          <PerformanceMetrics history={history} />
-          <Insights personal={personalWeights} population={populationWeights} modelType={state.activeModel} />
-        </aside>
+        {/* Right aside removed — insights moved below controls */}
       </main>
 
       <section className="mx-auto max-w-7xl px-6 pb-8">

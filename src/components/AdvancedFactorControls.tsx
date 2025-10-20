@@ -15,11 +15,14 @@ type Props = {
   onResetAll: () => void
   onOptimize: () => void
   onSaveScenario: () => void
+  highlightFactor?: string
+  priorityOrder?: string[]
+  excludeKeys?: string[]
 }
 
-export default function AdvancedFactorControls({ history, dayIndex, population, personal, overrides, shap, onChange, onResetAll, onOptimize, onSaveScenario }: Props) {
+export default function AdvancedFactorControls({ history, dayIndex, population, personal, overrides, shap, onChange, onResetAll, onOptimize, onSaveScenario, highlightFactor, priorityOrder, excludeKeys }: Props) {
   const current = history[dayIndex]
-  const keys = Object.keys(population) as (keyof FeatureWeights)[]
+  const keys = (Object.keys(population) as (keyof FeatureWeights)[]).filter((k) => !(excludeKeys || []).includes(String(k)))
 
   const ranges = useMemo(() => {
     const r: Record<string, { min: number; max: number }> = {}
@@ -32,15 +35,23 @@ export default function AdvancedFactorControls({ history, dayIndex, population, 
 
   const debounced = useMemo(() => debounce((k: keyof FeatureWeights, v: number) => onChange(k, v), 300), [onChange])
 
+  const sortedKeys = useMemo(() => {
+    if (!priorityOrder || priorityOrder.length === 0) return keys
+    const set = new Set(priorityOrder)
+    const top = keys.filter((k) => set.has(String(k)))
+    const rest = keys.filter((k) => !set.has(String(k)))
+    return [...top, ...rest] as (keyof FeatureWeights)[]
+  }, [keys, priorityOrder])
+
   return (
     <div className="flex flex-col gap-3">
-      {keys.map((k) => {
+      {sortedKeys.map((k) => {
         const base = (current as any)[k] as number
         const value = (overrides[k] as number | undefined) ?? base
         const r = ranges[k]
         const s = shap.features[k]
         return (
-          <div key={k as string} className="rounded-lg border border-gray-200 p-3 hover:shadow-sm transition-shadow">
+          <div key={k as string} className={`rounded-lg border border-gray-200 p-3 hover:shadow-sm transition-shadow ${highlightFactor === String(k) ? 'ring-2 ring-green-500' : ''}` }>
             <div className="mb-1 flex items-center justify-between">
               <div className="font-medium capitalize flex items-center gap-2">
                 <span className="inline-block h-1.5 w-6 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"></span>

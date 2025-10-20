@@ -1,4 +1,5 @@
 import type { DailyMetrics, FeatureWeights, PriorityAction, ShapContributions } from '../types'
+import { Link } from 'react-router-dom'
 import { calculatePriorities, severityStyles } from '../utils/priority'
 
 type Props = {
@@ -15,7 +16,7 @@ export default function PriorityPanel({ current, shap, history, onAdjust }: Prop
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow p-4">
       <div className="text-sm font-semibold text-gray-800 mb-3">🎯 Your Priority Actions</div>
       <div className="grid grid-cols-1 gap-3">
-        {priorities.map((p) => (
+        {priorities.slice(0, 5).map((p) => (
           <PriorityItem key={p.factor} p={p} onAdjust={onAdjust} />
         ))}
       </div>
@@ -23,7 +24,7 @@ export default function PriorityPanel({ current, shap, history, onAdjust }: Prop
   )
 }
 
-function PriorityItem({ p, onAdjust }: { p: PriorityAction; onAdjust?: (factor: string) => void }) {
+function PriorityItem({ p }: { p: PriorityAction; onAdjust?: (factor: string) => void }) {
   const badge = p.rank === 1 ? '🔴' : p.rank === 2 ? '🟡' : p.rank === 3 ? '🟢' : p.rank === 4 ? '🔵' : '⚪'
   return (
     <div className={`rounded-lg border ${severityStyles[p.severity]} p-3`}> 
@@ -36,8 +37,7 @@ function PriorityItem({ p, onAdjust }: { p: PriorityAction; onAdjust?: (factor: 
       </div>
       <div className="text-sm mt-2">{p.recommendation}</div>
       <div className="mt-2 flex gap-2">
-        <button className="rounded-full border px-3 py-1 text-xs hover:bg-white/40" onClick={() => onAdjust?.(p.factor)}>Adjust This Factor</button>
-        <button className="rounded-full border px-3 py-1 text-xs hover:bg-white/40">View Action Plan</button>
+        <Link to="/goals" className="rounded-full border px-3 py-1 text-xs hover:bg-white/40 inline-flex items-center">Set Goal</Link>
       </div>
     </div>
   )
