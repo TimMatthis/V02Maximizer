@@ -5,12 +5,12 @@ export default function Header() {
     <header className="border-b-2 border-gray-200 bg-gradient-to-b from-gray-50 to-white sticky top-0 z-50 shadow-lg">
       <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3 group">
-          <div className="h-12 w-12 rounded-xl !bg-gradient-to-br !from-green-500 !via-green-600 !to-green-700 flex items-center justify-center !text-white font-bold text-base shadow-lg transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl">
-            <span>VO<sub className="text-[0.65rem] -ml-0.5">2</sub></span>
+          <div className="h-12 w-12 rounded-xl !bg-gradient-to-br !from-green-500 !via-green-600 !to-green-700 flex items-center justify-center !text-white font-bold text-lg shadow-lg transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl">
+            <span>⚡</span>
           </div>
           <div className="flex flex-col leading-tight">
             <div className="text-2xl font-extrabold tracking-tight !text-green-700">
-              VO2 Maximizer
+              Performance Maximizer
             </div>
             <div className="!text-gray-800 text-xs font-semibold tracking-wide">
               A Rolls Data / AI in Australia collaboration

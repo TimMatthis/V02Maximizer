@@ -1,4 +1,6 @@
-type Props = { predicted: number; baseline: number }
+import type { ModelType } from '../types'
+
+type Props = { predicted: number; baseline: number; modelType: ModelType }
 
 function classifyVO2(vo2: number) {
   if (vo2 >= 55) return 'Excellent'
@@ -7,11 +9,20 @@ function classifyVO2(vo2: number) {
   return 'Below Average'
 }
 
-export default function PredictionDisplay({ predicted, baseline }: Props) {
+function classifyPower(power: number) {
+  if (power >= 320) return 'Excellent'
+  if (power >= 280) return 'Good'
+  if (power >= 240) return 'Average'
+  return 'Below Average'
+}
+
+export default function PredictionDisplay({ predicted, baseline, modelType }: Props) {
   const delta = predicted - baseline
   const color = delta >= 0 ? 'text-positive' : 'text-negative'
   const bgColor = delta >= 0 ? 'from-primary-500 to-primary-600' : 'from-red-500 to-red-600'
-  const classification = classifyVO2(predicted)
+  const classification = modelType === 'VO2' ? classifyVO2(predicted) : classifyPower(predicted)
+  const label = modelType === 'VO2' ? 'VO2max' : 'Power'
+  const unit = modelType === 'VO2' ? 'ml/kg/min' : 'W'
 
   return (
     <div className="relative rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-card hover:shadow-card-hover transition-all duration-300 overflow-hidden">
@@ -20,12 +31,15 @@ export default function PredictionDisplay({ predicted, baseline }: Props) {
         <div className="flex-1">
           <div className="text-sm font-medium text-neutral mb-2 flex items-center gap-2">
             <span className="text-lg">💪</span>
-            Predicted VO2max
+            Predicted {label}
           </div>
-          <div className="text-6xl font-extrabold bg-gradient-to-r from-primary-600 to-primary-700 bg-clip-text text-transparent tracking-tight mb-2">
-            {predicted.toFixed(1)}
+          <div className="flex items-baseline gap-2">
+            <div className="text-6xl font-extrabold bg-gradient-to-r from-primary-600 to-primary-700 bg-clip-text text-transparent tracking-tight">
+              {predicted.toFixed(1)}
+            </div>
+            <div className="text-lg text-gray-500 font-medium">{unit}</div>
           </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 text-xs font-semibold text-gray-700">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 text-xs font-semibold text-gray-700 mt-2">
             {classification} fitness
           </div>
         </div>

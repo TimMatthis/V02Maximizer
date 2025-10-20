@@ -1,9 +1,9 @@
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import type { SHAPValueItem } from '../types'
+import type { SHAPValueItem, ModelType } from '../types'
 
-type Props = { base: number; items: SHAPValueItem[] }
+type Props = { base: number; items: SHAPValueItem[]; modelType?: ModelType }
 
-export default function SHAPWaterfall({ base, items }: Props) {
+export default function SHAPWaterfall({ base, items, modelType = 'VO2' }: Props) {
   // Build cumulative series
   let cumulative = base
   const data = [

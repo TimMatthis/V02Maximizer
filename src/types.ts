@@ -1,6 +1,9 @@
+export type ModelType = 'VO2' | 'Power'
+
 export interface UserMetrics {
   date: string
   vo2max: number
+  power?: number
 
   // Garmin metrics
   trainingLoad: number
@@ -51,8 +54,10 @@ export interface UserProfile {
   name: string
   personalizationLevel: PersonalizationLevel
   daysOfData: number
-  modelWeights: FeatureWeights
+  modelWeightsVO2: FeatureWeights
+  modelWeightsPower: FeatureWeights
   baselineVO2Max: number
+  baselinePower: number
 }
 
 export interface ShapContributions {
@@ -70,7 +75,10 @@ export interface DailyMetrics extends FeatureWeights {
   date: string
   actualVO2Max?: number
   predictedVO2Max: number
+  actualPower?: number
+  predictedPower: number
   shapValues: ShapContributions
+  shapValuesPower: ShapContributions
 }
 
 // Non-linear response curve types

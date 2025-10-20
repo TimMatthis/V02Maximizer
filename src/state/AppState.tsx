@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useReducer } from 'react'
-import type { DailyMetrics, FeatureWeights } from '../types'
-import { generatePersonas, POPULATION_WEIGHTS } from '../utils/personas'
+import type { DailyMetrics, FeatureWeights, ModelType } from '../types'
+import { generatePersonas, POPULATION_WEIGHTS_VO2 } from '../utils/personas'
 
 type Scenario = { id: string; name: string; features: FeatureWeights }
 
@@ -12,6 +12,7 @@ type AppModel = {
   factorOverrides: Partial<FeatureWeights>
   savedScenarios: Scenario[]
   showSHAPFactors: Record<string, boolean>
+  activeModel: ModelType
 }
 
 type Action =
@@ -22,6 +23,7 @@ type Action =
   | { type: 'resetFactors' }
   | { type: 'saveScenario'; name: string }
   | { type: 'toggleFactor'; key: keyof FeatureWeights; on?: boolean }
+  | { type: 'setModel'; model: ModelType }
 
 function reducer(state: AppModel, action: Action): AppModel {
   switch (action.type) {
@@ -45,6 +47,8 @@ function reducer(state: AppModel, action: Action): AppModel {
     }
     case 'toggleFactor':
       return { ...state, showSHAPFactors: { ...state.showSHAPFactors, [action.key]: action.on ?? !state.showSHAPFactors[action.key as string] } }
+    case 'setModel':
+      return { ...state, activeModel: action.model, factorOverrides: {} }
     default:
       return state
   }
@@ -76,7 +80,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     dateRange: '3M',
     factorOverrides: {},
     savedScenarios: [],
-    showSHAPFactors: Object.fromEntries(Object.keys(POPULATION_WEIGHTS).map((k) => [k, true])) as Record<string, boolean>,
+    showSHAPFactors: Object.fromEntries(Object.keys(POPULATION_WEIGHTS_VO2).map((k) => [k, true])) as Record<string, boolean>,
+    activeModel: 'VO2',
   }
   const [state, dispatch] = useReducer(reducer, initial)
   return <AppStateContext.Provider value={{ state, dispatch }}>{children}</AppStateContext.Provider>

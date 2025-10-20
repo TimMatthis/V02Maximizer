@@ -1,6 +1,6 @@
-# VO2 Maximiser — Personalized VO2max Insights (Prototype)
+# Performance Maximizer — Personalized Performance Insights (Prototype)
 
-Interactive React + TypeScript prototype that explores how training, recovery, and lifestyle factors shape VO2max using explainability-style visuals (waterfall/force plots) and a simple online-learning simulation. Built with Vite and Tailwind CSS.
+Interactive React + TypeScript prototype that explores how training, recovery, and lifestyle factors shape VO2max and power output using explainability-style visuals (waterfall/force plots) and a simple online-learning simulation. Built with Vite and Tailwind CSS.
 
 A Rolls Data and AI in Australia collaboration.
 
@@ -72,8 +72,8 @@ State management is implemented via a lightweight `Context + useReducer` pattern
 
 - Start dev server: `npm run dev` then open the printed local URL.
 - Navigate:
-  - Dashboard: tweak factors, view SHAP waterfall/force, save scenarios.
-  - Goals & Plans: set a VO2max target and apply suggested factor targets.
+  - Dashboard: toggle between VO2max and Power models, tweak factors, view SHAP waterfall/force, save scenarios.
+  - Goals & Plans: set a VO2max or Power target and apply suggested factor targets.
   - Data Manager: review personas and placeholder sync actions.
 
 ## Oura OAuth (Prototype Backend)
@@ -103,11 +103,11 @@ Frontend config
 
 ## Known Issues & TODOs
 
-- Text/typo cleanup: product name varies (VO2/“V02” and Maximiser/Maximizer) and a few strings show encoding artifacts in the UI; standardize copy and encoding.
-- Asset placeholder: `Landing` references `/images/hero-athlete.jpg` which isn’t included; add or remove reference.
+- Asset placeholder: `Landing` references `/images/hero-athlete.jpg` which isn't included; add or remove reference.
 - Real integrations: add Garmin/Oura connectors and sync flows; persist user data.
 - Testing: add unit tests for utils (SHAP, thresholds, priority) and basic component tests.
 - Accessibility & i18n: audit ARIA usage, keyboard navigation, and add localization.
+- Model improvements: refine power model calculations and relationships between VO2max and power output.
 
 ## Scripts (from `package.json`)
 

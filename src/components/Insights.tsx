@@ -1,8 +1,8 @@
-import type { FeatureWeights } from '../types'
+import type { FeatureWeights, ModelType } from '../types'
 
-type Props = { personal: FeatureWeights; population: FeatureWeights }
+type Props = { personal: FeatureWeights; population: FeatureWeights; modelType?: ModelType }
 
-export default function Insights({ personal, population }: Props) {
+export default function Insights({ personal, population, modelType = 'VO2' }: Props) {
   const entries = Object.keys(population).map((k) => ({
     key: k,
     delta: (personal as any)[k] - (population as any)[k],
@@ -22,7 +22,7 @@ export default function Insights({ personal, population }: Props) {
           <li className="flex items-start gap-2">
             <span className="text-primary-600 mt-0.5">→</span>
             <span>
-              Your VO2max is more sensitive to <span className="font-semibold text-primary-700">{top.key}</span> than average by <span className="font-semibold">{Math.abs(top.delta * 100).toFixed(0)}%</span>.
+              Your {modelType === 'VO2' ? 'VO2max' : 'power output'} is more sensitive to <span className="font-semibold text-primary-700">{top.key}</span> than average by <span className="font-semibold">{Math.abs(top.delta * 100).toFixed(0)}%</span>.
             </span>
           </li>
         )}

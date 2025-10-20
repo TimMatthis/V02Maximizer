@@ -21,11 +21,11 @@ export default function Landing() {
             <h1 className="text-6xl font-extrabold tracking-tight mb-6 leading-tight">
               Maximize Your
               <span className="block !bg-gradient-to-r !from-emerald-400 !via-green-300 !to-lime-400 bg-clip-text !text-transparent">
-                VO2max Potential
+                Performance Potential
               </span>
             </h1>
             <p className="text-xl text-gray-300 leading-relaxed mb-8 max-w-2xl">
-              Discover how training, recovery, and lifestyle factors impact your aerobic capacity. Get real-time SHAP insights and personalized recommendations to optimize your performance.
+              Discover how training, recovery, and lifestyle factors impact your VO2max and power output. Get real-time SHAP insights and personalized recommendations to optimize your performance.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link 
@@ -68,7 +68,7 @@ export default function Landing() {
           <FeatureCard 
             icon="📊"
             title="Explainability" 
-            body="Dynamic SHAP analysis shows exactly which factors are boosting or limiting your VO2max in real-time."
+            body="Dynamic SHAP analysis shows exactly which factors are boosting or limiting your performance in real-time."
             gradient="from-primary-500 to-primary-600"
           />
           <FeatureCard 

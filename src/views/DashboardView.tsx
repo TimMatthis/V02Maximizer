@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAppState } from '../state/AppState'
-import { POPULATION_WEIGHTS } from '../utils/personas'
+import { POPULATION_WEIGHTS_VO2, POPULATION_WEIGHTS_POWER } from '../utils/personas'
 import AdvancedFactorControls from '../components/AdvancedFactorControls'
 import DualTimeline from '../components/DualTimeline'
 import PredictionDisplay from '../components/PredictionDisplay'
@@ -38,22 +38,38 @@ export default function DashboardView() {
 
   const backgroundMean = useMemo(() => {
     const means: any = {}
-    for (const k of Object.keys(POPULATION_WEIGHTS)) {
+    const popWeights = state.activeModel === 'VO2' ? POPULATION_WEIGHTS_VO2 : POPULATION_WEIGHTS_POWER
+    for (const k of Object.keys(popWeights)) {
       const arr = history.map((d) => (d as any)[k] as number)
       means[k] = arr.reduce((a, b) => a + b, 0) / arr.length
     }
     return means as FeatureWeights
-  }, [history])
+  }, [history, state.activeModel])
+
+  const baselineValue = useMemo(() => 
+    state.activeModel === 'VO2' ? persona.profile.baselineVO2Max : persona.profile.baselinePower,
+    [state.activeModel, persona.profile]
+  )
+
+  const personalWeights = useMemo(() => 
+    state.activeModel === 'VO2' ? persona.personalWeightsVO2 : persona.personalWeightsPower,
+    [state.activeModel, persona]
+  )
+
+  const populationWeights = useMemo(() => 
+    state.activeModel === 'VO2' ? persona.populationWeightsVO2 : persona.populationWeightsPower,
+    [state.activeModel, persona]
+  )
 
   const shapForCurrent = useMemo(() => {
     const featHist: Record<string, number[]> = {}
-    for (const k of Object.keys(POPULATION_WEIGHTS)) featHist[k] = history.map((d) => (d as any)[k] as number)
-    const weights = persona.personalWeights
-    const calc = new SimplifiedTreeSHAP(persona.profile.baselineVO2Max, featHist, weights)
+    const popWeights = state.activeModel === 'VO2' ? POPULATION_WEIGHTS_VO2 : POPULATION_WEIGHTS_POWER
+    for (const k of Object.keys(popWeights)) featHist[k] = history.map((d) => (d as any)[k] as number)
+    const calc = new SimplifiedTreeSHAP(baselineValue, featHist, personalWeights)
     return calc.calculateShapValues(currentFeatures, backgroundMean)
-  }, [history, persona, currentFeatures, backgroundMean])
+  }, [history, currentFeatures, backgroundMean, baselineValue, personalWeights, state.activeModel])
 
-  const predictedNow = useMemo(() => persona.profile.baselineVO2Max + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0), [shapForCurrent, persona.profile.baselineVO2Max])
+  const predictedNow = useMemo(() => baselineValue + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0), [shapForCurrent, baselineValue])
 
   const personalizationPct = Math.min(1, persona.profile.daysOfData / 30)
   const personalizationLabel = persona.profile.daysOfData < 14 ? 'Using general model – personalization begins after ~2 weeks' : persona.profile.daysOfData < 30 ? `Model is ${(personalizationPct * 100).toFixed(0)}% personalized` : 'Fully personalized model'
@@ -73,22 +89,61 @@ export default function DashboardView() {
       </div>
       <main className="mx-auto grid max-w-7xl grid-cols-12 gap-6 px-6 pb-8">
         <aside className="col-span-3 rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-4 max-lg:col-span-12 sticky top-24 self-start">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-sm">⚙️</div>
-              Factors
+          <div className="mb-4">
+            <div className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-sm">👤</div>
+              Athlete Profile
             </div>
-            <select aria-label="Select user" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium hover:border-primary-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all" value={state.activePersonaIndex} onChange={(e) => dispatch({ type: 'setPersona', index: parseInt(e.target.value) })}>
+            <div className="mb-4 space-y-2">
               {state.personas.map((p, i) => (
-                <option key={p.profile.id} value={i}>{p.profile.name}</option>
+                <button
+                  key={p.profile.id}
+                  onClick={() => dispatch({ type: 'setPersona', index: i })}
+                  className={`w-full text-left rounded-lg border p-3 transition-all duration-200 ${
+                    state.activePersonaIndex === i
+                      ? 'border-green-600 bg-green-600 text-white shadow-md'
+                      : 'border-gray-200 hover:bg-gray-100 text-gray-900'
+                  }`}
+                >
+                  <div className={`font-semibold text-sm ${state.activePersonaIndex === i ? 'text-white' : 'text-gray-900'}`}>{p.profile.name}</div>
+                  <div className={`text-xs mt-0.5 ${state.activePersonaIndex === i ? 'text-green-50' : 'text-gray-600'}`}>
+                    {i === 0 && 'High-performance athlete, training-focused'}
+                    {i === 1 && 'Recreational athlete, recovery-focused'}
+                    {i === 2 && 'Developing talent, balanced approach'}
+                  </div>
+                </button>
               ))}
-            </select>
+            </div>
+            <div className="border-t border-gray-200 my-4"></div>
+            <div className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-sm">⚙️</div>
+              Controls
+            </div>
+            <div className="flex items-center gap-2 text-sm mb-3">
+              <span className="text-gray-600 font-medium">Model:</span>
+              <div className="inline-flex items-center rounded-lg border border-gray-300 overflow-hidden shadow-sm">
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${state.activeModel === 'VO2' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
+                  onClick={() => dispatch({ type: 'setModel', model: 'VO2' })}
+                >
+                  VO2max
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-sm font-semibold transition-all duration-200 ${state.activeModel === 'Power' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
+                  onClick={() => dispatch({ type: 'setModel', model: 'Power' })}
+                >
+                  Power
+                </button>
+              </div>
+            </div>
           </div>
           <AdvancedFactorControls
             history={history}
             dayIndex={state.activeIndex}
-            population={persona.populationWeights as FeatureWeights}
-            personal={persona.personalWeights as FeatureWeights}
+            population={populationWeights}
+            personal={personalWeights}
             overrides={state.factorOverrides}
             shap={shapForCurrent}
             onChange={(k, v) => dispatch({ type: 'setFactor', key: k, value: v })}
@@ -107,7 +162,7 @@ export default function DashboardView() {
         <section className="col-span-6 flex flex-col gap-6 max-lg:col-span-12">
           {/* Priority hierarchy panel */}
           <PriorityPanel current={currentFeatures} shap={shapForCurrent} history={history} onAdjust={() => { /* handled via sliders */ }} />
-          <PredictionDisplay predicted={predictedNow} baseline={persona.profile.baselineVO2Max} />
+          <PredictionDisplay predicted={predictedNow} baseline={baselineValue} modelType={state.activeModel} />
 
           <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
@@ -129,16 +184,16 @@ export default function DashboardView() {
               ))}
             </div>
             {activeTab === 'waterfall' && (
-              <SHAPWaterfall base={persona.profile.baselineVO2Max} items={Object.entries(shapForCurrent.features).map(([k, v]) => ({ factorName: k, baseValue: persona.profile.baselineVO2Max, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} />
+              <SHAPWaterfall base={baselineValue} items={Object.entries(shapForCurrent.features).map(([k, v]) => ({ factorName: k, baseValue: baselineValue, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} modelType={state.activeModel} />
             )}
             {activeTab === 'force' && (
               <ForcePlot items={Object.entries(shapForCurrent.features).map(([k, v]) => ({ name: k, value: v.shapValue }))} />
             )}
             {activeTab === 'importance' && (
-              <ImportanceRanking population={persona.populationWeights} personal={persona.personalWeights} />
+              <ImportanceRanking population={populationWeights} personal={personalWeights} />
             )}
             {activeTab === 'dependency' && (
-              <DependencyPlots history={history} factors={Object.keys(POPULATION_WEIGHTS).slice(0, 4)} />
+              <DependencyPlots history={history} factors={Object.keys(populationWeights).slice(0, 4)} />
             )}
           </div>
         </section>
@@ -146,7 +201,7 @@ export default function DashboardView() {
         <aside className="col-span-3 flex flex-col gap-4 max-lg:col-span-12">
           <WeightEvolution history={history} />
           <PerformanceMetrics history={history} />
-          <Insights personal={persona.personalWeights} population={persona.populationWeights} />
+          <Insights personal={personalWeights} population={populationWeights} modelType={state.activeModel} />
         </aside>
       </main>
 
@@ -163,17 +218,18 @@ export default function DashboardView() {
             <div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
               <div>
                 <div className="mb-2 text-sm font-medium">Current</div>
-                <SHAPWaterfall base={persona.profile.baselineVO2Max} items={Object.entries(shapForCurrent.features).map(([k, v]) => ({ factorName: k, baseValue: persona.profile.baselineVO2Max, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} />
+                <SHAPWaterfall base={baselineValue} items={Object.entries(shapForCurrent.features).map(([k, v]) => ({ factorName: k, baseValue: baselineValue, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} modelType={state.activeModel} />
               </div>
               <div>
                 <div className="mb-2 text-sm font-medium">{state.savedScenarios[0].name}</div>
                 {(() => {
                   const featHist: Record<string, number[]> = {}
-                  for (const k of Object.keys(POPULATION_WEIGHTS)) featHist[k] = history.map((d) => (d as any)[k] as number)
-                  const calc = new SimplifiedTreeSHAP(persona.profile.baselineVO2Max, featHist, persona.personalWeights)
+                  const popWeights = state.activeModel === 'VO2' ? POPULATION_WEIGHTS_VO2 : POPULATION_WEIGHTS_POWER
+                  for (const k of Object.keys(popWeights)) featHist[k] = history.map((d) => (d as any)[k] as number)
+                  const calc = new SimplifiedTreeSHAP(baselineValue, featHist, personalWeights)
                   const sv = calc.calculateShapValues(state.savedScenarios[0].features as FeatureWeights, backgroundMean)
                   return (
-                    <SHAPWaterfall base={persona.profile.baselineVO2Max} items={Object.entries(sv.features).map(([k, v]) => ({ factorName: k, baseValue: persona.profile.baselineVO2Max, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} />
+                    <SHAPWaterfall base={baselineValue} items={Object.entries(sv.features).map(([k, v]) => ({ factorName: k, baseValue: baselineValue, shapValue: v.shapValue, currentValue: v.value, normalizedImportance: v.percentageContribution }))} modelType={state.activeModel} />
                   )
                 })()}
               </div>

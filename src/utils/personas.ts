@@ -3,7 +3,7 @@ import { OnlineLearningSimulator } from './onlineLearning'
 import { SimplifiedTreeSHAP } from './shapSimplified'
 import { clamp } from './util'
 
-export const POPULATION_WEIGHTS: FeatureWeights = {
+export const POPULATION_WEIGHTS_VO2: FeatureWeights = {
   trainingLoad: 0.18,
   sleepScore: 0.16,
   hrv: 0.14,
@@ -16,6 +16,22 @@ export const POPULATION_WEIGHTS: FeatureWeights = {
   bodyTemperature: 0.03,
 }
 
+export const POPULATION_WEIGHTS_POWER: FeatureWeights = {
+  trainingLoad: 0.22,
+  weeklyVolume: 0.20,
+  workoutIntensity: 0.16,
+  recoveryTime: 0.12,
+  readinessScore: 0.10,
+  sleepScore: 0.08,
+  restingHeartRate: 0.05,
+  hrv: 0.04,
+  deepSleepMinutes: 0.02,
+  bodyTemperature: 0.01,
+}
+
+// Legacy export for backwards compatibility
+export const POPULATION_WEIGHTS = POPULATION_WEIGHTS_VO2
+
 function normalizeWeights(w: FeatureWeights): FeatureWeights {
   const sum = Object.values(w).reduce((a, b) => a + b, 0)
   const out: any = {}
@@ -23,51 +39,90 @@ function normalizeWeights(w: FeatureWeights): FeatureWeights {
   return out as FeatureWeights
 }
 
-function buildPersona(name: string, days: number, baselineVO2: number, emphasis: Partial<FeatureWeights>) {
+function buildPersona(name: string, days: number, baselineVO2: number, baselinePower: number, emphasisVO2: Partial<FeatureWeights>, emphasisPower: Partial<FeatureWeights>) {
   const id = name.toLowerCase().replace(/\s+/g, '-')
-  const weights = normalizeWeights({ ...POPULATION_WEIGHTS, ...emphasis })
+  const weightsVO2 = normalizeWeights({ ...POPULATION_WEIGHTS_VO2, ...emphasisVO2 })
+  const weightsPower = normalizeWeights({ ...POPULATION_WEIGHTS_POWER, ...emphasisPower })
   const profile: UserProfile = {
     id,
     name,
     personalizationLevel: (days < 14 ? 'population' : days < 30 ? 'personalizing' : 'personalized') as PersonalizationLevel,
     daysOfData: days,
-    modelWeights: weights,
+    modelWeightsVO2: weightsVO2,
+    modelWeightsPower: weightsPower,
     baselineVO2Max: baselineVO2,
+    baselinePower: baselinePower,
   }
-  return { profile, weights }
+  return { profile, weightsVO2, weightsPower }
 }
 
-export type PersonaBundle = { profile: UserProfile; history: DailyMetrics[]; populationWeights: FeatureWeights; personalWeights: FeatureWeights }
+export type PersonaBundle = { 
+  profile: UserProfile; 
+  history: DailyMetrics[]; 
+  populationWeightsVO2: FeatureWeights; 
+  personalWeightsVO2: FeatureWeights;
+  populationWeightsPower: FeatureWeights; 
+  personalWeightsPower: FeatureWeights;
+}
 
 export function generatePersonas(): PersonaBundle[] {
   const personas = [
-    buildPersona('Elite Runner', 90, 58, { trainingLoad: 0.4, sleepScore: 0.08 }),
-    buildPersona('Busy Professional', 90, 42, { sleepScore: 0.35, hrv: 0.25 }),
-    buildPersona('New User', 10, 48, {}),
+    // Existing Elites - High baseline, training load dominant
+    buildPersona(
+      'Existing Elite', 90, 58, 340,
+      { trainingLoad: 0.40, weeklyVolume: 0.16, workoutIntensity: 0.10 }, // VO2 emphasis - training matters most
+      { trainingLoad: 0.45, weeklyVolume: 0.25, workoutIntensity: 0.18 } // Power emphasis - volume critical
+    ),
+    // Gen Pop / Active Weekenders - Moderate baseline, recovery/sleep important
+    buildPersona(
+      'Active Weekender', 90, 45, 260,
+      { sleepScore: 0.28, hrv: 0.20, readinessScore: 0.15, recoveryTime: 0.08 }, // VO2 emphasis - recovery matters
+      { sleepScore: 0.15, readinessScore: 0.18, recoveryTime: 0.15, weeklyVolume: 0.18 } // Power emphasis
+    ),
+    // Early Elite - Talent Scouting - Young/developing, balanced response
+    buildPersona(
+      'Early Elite (Talent)', 60, 52, 290,
+      { trainingLoad: 0.22, weeklyVolume: 0.18, sleepScore: 0.18, hrv: 0.15 }, // VO2 emphasis - balanced development
+      { trainingLoad: 0.25, weeklyVolume: 0.22, workoutIntensity: 0.15, recoveryTime: 0.12 } // Power emphasis
+    ),
   ]
 
-  return personas.map(({ profile, weights }) => {
+  return personas.map(({ profile, weightsVO2, weightsPower }) => {
     const days = profile.daysOfData
     const history: DailyMetrics[] = []
-    const baseWeights = normalizeWeights(POPULATION_WEIGHTS)
-    // Start from population and evolve to personal
+    const baseWeightsVO2 = normalizeWeights(POPULATION_WEIGHTS_VO2)
+    const baseWeightsPower = normalizeWeights(POPULATION_WEIGHTS_POWER)
+    
+    // Start from population and evolve to personal for VO2
     const weekSteps = Math.max(1, Math.floor(days / 7))
-    const weightSnapshots: FeatureWeights[] = []
+    const weightSnapshotsVO2: FeatureWeights[] = []
+    const weightSnapshotsPower: FeatureWeights[] = []
+    
     for (let w = 0; w < weekSteps; w++) {
       const t = Math.min(1, w / (weekSteps - 1 || 1))
-      const snap: any = {}
-      for (const k of Object.keys(baseWeights) as (keyof FeatureWeights)[]) {
-        snap[k] = baseWeights[k] * (1 - t) + (weights as any)[k] * t
+      
+      // VO2 model evolution
+      const snapVO2: any = {}
+      for (const k of Object.keys(baseWeightsVO2) as (keyof FeatureWeights)[]) {
+        snapVO2[k] = baseWeightsVO2[k] * (1 - t) + (weightsVO2 as any)[k] * t
       }
-      weightSnapshots.push(normalizeWeights(snap as FeatureWeights))
+      weightSnapshotsVO2.push(normalizeWeights(snapVO2 as FeatureWeights))
+      
+      // Power model evolution
+      const snapPower: any = {}
+      for (const k of Object.keys(baseWeightsPower) as (keyof FeatureWeights)[]) {
+        snapPower[k] = baseWeightsPower[k] * (1 - t) + (weightsPower as any)[k] * t
+      }
+      weightSnapshotsPower.push(normalizeWeights(snapPower as FeatureWeights))
     }
 
     // Feature history containers for SHAP
     const featHist: Record<string, number[]> = {}
-    for (const k of Object.keys(baseWeights)) featHist[k] = []
+    for (const k of Object.keys(baseWeightsVO2)) featHist[k] = []
 
     // Generate daily data with correlations
     let vo2 = profile.baselineVO2Max
+    let power = profile.baselinePower
     let cumulativeLoad = 0
     let lastSleep = 80
     let lastTraining = 400
@@ -95,6 +150,12 @@ export function generatePersonas(): PersonaBundle[] {
         38,
         70,
       )
+      // Power scales similarly to VO2 but with different baseline
+      power = clamp(
+        profile.baselinePower + (cumulativeLoad / 1000) * 3 - ((30 - 30) * 0.5) + (Math.random() - 0.5) * 1.5,
+        150,
+        450,
+      )
 
       // Store feature history
       const features: FeatureWeights = {
@@ -119,43 +180,58 @@ export function generatePersonas(): PersonaBundle[] {
         ...features,
         actualVO2Max: i % 30 === 0 ? vo2 + (Math.random() - 0.5) * 0.8 : undefined, // monthly ground truth
         predictedVO2Max: vo2,
+        actualPower: i % 30 === 0 ? power + (Math.random() - 0.5) * 5 : undefined,
+        predictedPower: power,
         shapValues: { baseValue: vo2, features: {} } as ShapContributions,
+        shapValuesPower: { baseValue: power, features: {} } as ShapContributions,
       })
     }
 
-    // Build SHAP and personalization via online learning
-    const ols = new OnlineLearningSimulator(baseWeights, Object.fromEntries(Object.keys(baseWeights).map((k) => [k, featHist[k].reduce((a, b) => a + b, 0) / featHist[k].length])) as unknown as FeatureWeights)
+    // Build SHAP and personalization via online learning - SEPARATE MODELS
+    const backgroundMean = Object.fromEntries(Object.keys(baseWeightsVO2).map((k) => [k, featHist[k].reduce((a, b) => a + b, 0) / featHist[k].length])) as unknown as FeatureWeights
+    
+    const olsVO2 = new OnlineLearningSimulator(baseWeightsVO2, backgroundMean)
+    const olsPower = new OnlineLearningSimulator(baseWeightsPower, backgroundMean)
 
-    let currentWeights = { ...baseWeights }
     for (let i = 0; i < history.length; i++) {
-      // Interpolate weights weekly toward persona weights
       const weekIndex = Math.floor(i / 7)
-      const snap = weightSnapshots[Math.min(weekIndex, weightSnapshots.length - 1)]
-      currentWeights = { ...snap }
-
-      const baseValue = profile.baselineVO2Max
-      const shap = new SimplifiedTreeSHAP(baseValue, featHist, currentWeights)
       const instance = featuresFromDaily(history[i])
-      const backgroundMean = Object.fromEntries(Object.keys(instance).map((k) => [k, featHist[k].reduce((a, b) => a + b, 0) / featHist[k].length])) as unknown as FeatureWeights
-      const shapVals = shap.calculateShapValues(instance, backgroundMean)
+      
+      // VO2 Model - interpolate weights weekly
+      const currentWeightsVO2 = weightSnapshotsVO2[Math.min(weekIndex, weightSnapshotsVO2.length - 1)]
+      const shapVO2 = new SimplifiedTreeSHAP(profile.baselineVO2Max, featHist, currentWeightsVO2)
+      const shapValsVO2 = shapVO2.calculateShapValues(instance, backgroundMean)
+      const predVO2 = profile.baselineVO2Max + Object.values(shapValsVO2.features).reduce((s, f) => s + f.shapValue, 0)
+      history[i].predictedVO2Max = predVO2
+      history[i].shapValues = shapValsVO2
 
-      const pred = baseValue + Object.values(shapVals.features).reduce((s, f) => s + f.shapValue, 0)
-      history[i].predictedVO2Max = pred
-      history[i].shapValues = shapVals
+      // Power Model - interpolate weights weekly (DIFFERENT WEIGHTS)
+      const currentWeightsPower = weightSnapshotsPower[Math.min(weekIndex, weightSnapshotsPower.length - 1)]
+      const shapPower = new SimplifiedTreeSHAP(profile.baselinePower, featHist, currentWeightsPower)
+      const shapValsPower = shapPower.calculateShapValues(instance, backgroundMean)
+      const predPower = profile.baselinePower + Object.values(shapValsPower.features).reduce((s, f) => s + f.shapValue, 0)
+      history[i].predictedPower = predPower
+      history[i].shapValuesPower = shapValsPower
 
-      // Update online learning when we have ground truth
+      // Update online learning when we have ground truth - SEPARATE MODELS
       if (history[i].actualVO2Max != null) {
-        ols.updateWeights(instance, history[i].actualVO2Max!, pred)
+        olsVO2.updateWeights(instance, history[i].actualVO2Max!, predVO2)
+      }
+      if (history[i].actualPower != null) {
+        olsPower.updateWeights(instance, history[i].actualPower!, predPower)
       }
     }
 
-    const personalWeights = ols.getWeights()
+    const personalWeightsVO2 = olsVO2.getWeights()
+    const personalWeightsPower = olsPower.getWeights()
 
     return {
       profile,
       history,
-      populationWeights: baseWeights,
-      personalWeights,
+      populationWeightsVO2: baseWeightsVO2,
+      personalWeightsVO2,
+      populationWeightsPower: baseWeightsPower,
+      personalWeightsPower,
     }
   })
 }

@@ -4,6 +4,7 @@ import type { FeatureWeights } from '../types'
 import { SimplifiedTreeSHAP } from '../utils/shapSimplified'
 import { calculatePriorities, severityStyles } from '../utils/priority'
 import { factorParameters, factorResponseFunctions } from '../utils/responseCurves'
+import { buildSystemPrompt, sendChatMessageStreaming, type ChatMessage } from '../utils/openai'
 
 export default function GoalsPlans() {
   const { state, dispatch } = useAppState()
@@ -11,8 +12,15 @@ export default function GoalsPlans() {
   const history = persona.history
   const day = history[state.activeIndex]
 
-  const [platform, setPlatform] = useState<'VO2' | 'Power'>('VO2')
+  const platform = state.activeModel
   const [planReady, setPlanReady] = useState(false)
+  
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+  const apiKey = import.meta.env.VITE_OPENAI_API_KEY || ''
 
   const currentFeatures: FeatureWeights = useMemo(() => ({
     trainingLoad: state.factorOverrides.trainingLoad ?? day.trainingLoad,
@@ -36,24 +44,35 @@ export default function GoalsPlans() {
     return means as FeatureWeights
   }, [history, currentFeatures])
 
+  const baselineValue = useMemo(() => 
+    platform === 'VO2' ? persona.profile.baselineVO2Max : persona.profile.baselinePower,
+    [platform, persona.profile]
+  )
+
+  const personalWeights = useMemo(() => 
+    platform === 'VO2' ? persona.personalWeightsVO2 : persona.personalWeightsPower,
+    [platform, persona]
+  )
+
   const shapForCurrent = useMemo(() => {
     const featHist: Record<string, number[]> = {}
     for (const k of Object.keys(currentFeatures)) featHist[k] = history.map((d) => (d as any)[k] as number)
-    const weights = persona.personalWeights
-    const calc = new SimplifiedTreeSHAP(persona.profile.baselineVO2Max, featHist, weights)
+    const calc = new SimplifiedTreeSHAP(baselineValue, featHist, personalWeights)
     return calc.calculateShapValues(currentFeatures, backgroundMean)
-  }, [history, persona, currentFeatures, backgroundMean])
+  }, [history, currentFeatures, backgroundMean, baselineValue, personalWeights])
 
   const predictedNow = useMemo(
-    () => persona.profile.baselineVO2Max + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0),
-    [shapForCurrent, persona.profile.baselineVO2Max],
+    () => baselineValue + Object.values(shapForCurrent.features).reduce((s, f) => s + f.shapValue, 0),
+    [shapForCurrent, baselineValue],
   )
-  const measuredNow = day.actualVO2Max ?? null
+  const measuredNow = platform === 'VO2' ? (day.actualVO2Max ?? null) : (day.actualPower ?? null)
 
-  const [targetVO2, setTargetVO2] = useState<number | null>(null)
+  const [targetValue, setTargetValue] = useState<number | null>(null)
+  const defaultIncrement = platform === 'VO2' ? 2 : 15 // 2 ml/kg/min for VO2, 15W for Power
+  
   useEffect(() => {
-    if (targetVO2 == null) setTargetVO2(Number((predictedNow + 2).toFixed(1)))
-  }, [predictedNow])
+    if (targetValue == null) setTargetValue(Number((predictedNow + defaultIncrement).toFixed(1)))
+  }, [predictedNow, defaultIncrement, targetValue])
 
   const topFactors = useMemo(() => {
     const entries = Object.entries(shapForCurrent.features)
@@ -77,6 +96,92 @@ export default function GoalsPlans() {
     dispatch({ type: 'resetFactors' })
   }
 
+  // Initialize chat with AI greeting when plan is ready
+  useEffect(() => {
+    if (planReady && targetValue && chatMessages.length === 0) {
+      const greeting: ChatMessage = {
+        role: 'assistant',
+        content: `Based on your **${persona.profile.name}** profile targeting **${targetValue.toFixed(1)} ${platform === 'VO2' ? 'ml/kg/min' : 'W'}**, I recommend focusing on your top 3 factors. Your current plan shows a potential gain of **+${scenarioPlan.totalGain.toFixed(1)} ${platform === 'VO2' ? 'ml/kg/min' : 'W'}**.\n\nHow can I help you optimize your training plan?`
+      }
+      setChatMessages([greeting])
+    }
+  }, [planReady, targetValue, chatMessages.length])
+
+  // Send chat message
+  async function sendMessage(userMessage: string) {
+    if (!userMessage.trim() || isLoading) return
+    
+    if (!apiKey || apiKey === 'your_openai_api_key_here') {
+      setChatError('Please configure your OpenAI API key in .env file (VITE_OPENAI_API_KEY)')
+      return
+    }
+
+    setChatError(null)
+    setIsLoading(true)
+    setChatInput('')
+
+    // Add user message
+    const newUserMessage: ChatMessage = { role: 'user', content: userMessage }
+    setChatMessages(prev => [...prev, newUserMessage])
+
+    // Build system prompt with context
+    const topFactors = Object.entries(shapForCurrent.features)
+      .sort((a, b) => b[1].percentageContribution - a[1].percentageContribution)
+      .slice(0, 5)
+      .map(([factor, data]) => ({
+        factor,
+        contribution: data.percentageContribution * 100,
+        impact: data.shapValue
+      }))
+
+    const systemPrompt = buildSystemPrompt({
+      personaName: persona.profile.name,
+      personaType: persona.profile.name as any,
+      modelType: platform,
+      currentValue: predictedNow,
+      targetValue: targetValue || predictedNow,
+      unit: platform === 'VO2' ? 'ml/kg/min' : 'W',
+      baselineVO2: persona.profile.baselineVO2Max,
+      baselinePower: persona.profile.baselinePower,
+      shapTop5: topFactors,
+      plannedGain: scenarioPlan.totalGain,
+      daysOfData: persona.profile.daysOfData
+    })
+
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatMessages,
+      newUserMessage
+    ]
+
+    try {
+      // Add placeholder for AI response
+      setChatMessages(prev => [...prev, { role: 'assistant', content: '' }])
+      
+      let fullResponse = ''
+      await sendChatMessageStreaming(messages, apiKey, (chunk) => {
+        fullResponse += chunk
+        setChatMessages(prev => {
+          const newMessages = [...prev]
+          newMessages[newMessages.length - 1] = { role: 'assistant', content: fullResponse }
+          return newMessages
+        })
+      })
+    } catch (error) {
+      console.error('Chat error:', error)
+      setChatError(error instanceof Error ? error.message : 'Failed to send message')
+      // Remove failed message
+      setChatMessages(prev => prev.slice(0, -1))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle quick question click
+  function handleQuickQuestion(question: string) {
+    sendMessage(question)
+  }
+
   const CATEGORY_MAP: Record<'Training' | 'Sleep' | 'Recovery', (keyof FeatureWeights | string)[]> = {
     Training: ['trainingLoad', 'weeklyVolume', 'workoutIntensity'],
     Sleep: ['sleepScore', 'deepSleepMinutes', 'hrv'],
@@ -91,8 +196,8 @@ export default function GoalsPlans() {
   type PlanByCategory = Record<string, PlanItem[]>
 
   const scenarioPlan = useMemo(() => {
-    if (targetVO2 == null) return { byCategory: {} as PlanByCategory, totalGain: 0, meets: false }
-    const delta = targetVO2 - predictedNow
+    if (targetValue == null) return { byCategory: {} as PlanByCategory, totalGain: 0, meets: false }
+    const delta = targetValue - predictedNow
 
     const currentImpact = (k: string, v: number) => {
       const fn = factorResponseFunctions[k] || ((_v: number) => 0)
@@ -131,7 +236,7 @@ export default function GoalsPlans() {
     const topLimited = combinedTop.slice(0, 5)
     const totalGain = topLimited.reduce((s, p) => s + Math.max(0, p.gain), 0)
     return { byCategory: proposals, totalGain, meets: totalGain >= delta - 0.2 }
-  }, [targetVO2, predictedNow, currentFeatures, backgroundMean])
+  }, [targetValue, predictedNow, currentFeatures, backgroundMean])
 
   function applyScenarioPlan() {
     const items = Object.values(scenarioPlan.byCategory).flat()
@@ -140,7 +245,8 @@ export default function GoalsPlans() {
         dispatch({ type: 'setFactor', key: p.factor as keyof FeatureWeights, value: p.target })
       }
     }
-    dispatch({ type: 'saveScenario', name: `${platform} to ${targetVO2?.toFixed(1)}` })
+    const unit = platform === 'VO2' ? 'ml/kg/min' : 'W'
+    dispatch({ type: 'saveScenario', name: `${platform} to ${targetValue?.toFixed(1)}${unit}` })
   }
 
   return (
@@ -148,21 +254,42 @@ export default function GoalsPlans() {
       <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight flex items-center gap-3">
-            <span className="text-primary-600">??</span>
+            <span className="text-primary-600">🎯</span>
             Goals & Training Plans
           </h1>
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-sm text-gray-600">Active user: <span className="font-semibold text-gray-900">{persona.profile.name}</span></span>
-            <div className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary-50 to-primary-100 text-primary-800 border border-primary-300 px-4 py-2 shadow-sm">
-              <span className="text-sm font-medium">Current {platform}</span>
-              <span className="rounded-lg bg-white px-3 py-1 text-primary-900 border border-primary-400 font-bold text-lg">
-                {predictedNow.toFixed(1)}
-              </span>
-              <span className="text-xs">{platform === 'VO2' ? 'ml/kg/min' : 'W'}</span>
-              {platform === 'VO2' && measuredNow != null && (
-                <span className="text-xs text-primary-700">(Measured: {measuredNow.toFixed(1)})</span>
-              )}
-            </div>
+        </div>
+
+        {/* Athlete Profile Selector */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5 mb-6">
+          <div className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="text-primary-600">👤</span>
+            Athlete Profile
+          </div>
+          <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+            {state.personas.map((p, i) => (
+              <button
+                key={p.profile.id}
+                onClick={() => dispatch({ type: 'setPersona', index: i })}
+                className={`text-left rounded-lg border p-4 transition-all duration-200 ${
+                  state.activePersonaIndex === i
+                    ? 'border-green-600 bg-green-600 shadow-md'
+                    : 'border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                <div className={`font-bold text-base mb-1 ${state.activePersonaIndex === i ? 'text-white' : 'text-gray-900'}`}>{p.profile.name}</div>
+                <div className={`text-xs ${state.activePersonaIndex === i ? 'text-green-50' : 'text-gray-600'}`}>
+                  {i === 0 && 'High-performance athlete, training-focused'}
+                  {i === 1 && 'Recreational athlete, recovery-focused'}
+                  {i === 2 && 'Developing talent, balanced approach'}
+                </div>
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  <span className={state.activePersonaIndex === i ? 'text-green-100' : 'text-gray-500'}>Baseline:</span>
+                  <span className={`font-semibold ${state.activePersonaIndex === i ? 'text-white' : 'text-green-700'}`}>{p.profile.baselineVO2Max} ml/kg/min</span>
+                  <span className={state.activePersonaIndex === i ? 'text-green-200' : 'text-gray-400'}>|</span>
+                  <span className={`font-semibold ${state.activePersonaIndex === i ? 'text-white' : 'text-green-700'}`}>{p.profile.baselinePower}W</span>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -172,30 +299,29 @@ export default function GoalsPlans() {
             <div className="text-lg font-semibold">Target {platform === 'VO2' ? 'VO2max' : 'Power'}</div>
             <div className="text-sm text-gray-600">Current prediction: {predictedNow.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</div>
           </div>
-          <div className="flex items-center text-sm rounded-full border overflow-hidden">
+          <div className="inline-flex items-center rounded-lg border border-gray-300 overflow-hidden shadow-sm">
             <button
               type="button"
-              className={`px-3 py-1.5 ${platform === 'VO2' ? 'bg-primary-600 text-white' : 'bg-white'}`}
-              onClick={() => setPlatform('VO2')}
+              className={`px-4 py-2 text-sm font-semibold transition-all duration-200 ${platform === 'VO2' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
+              onClick={() => dispatch({ type: 'setModel', model: 'VO2' })}
             >
-              VO2
+              VO2max
             </button>
             <button
               type="button"
-              className={`px-3 py-1.5 ${platform === 'Power' ? 'bg-primary-600 text-white' : 'bg-white'}`}
-              onClick={() => setPlatform('Power')}
+              className={`px-4 py-2 text-sm font-semibold transition-all duration-200 ${platform === 'Power' ? 'bg-green-600 text-white shadow-md' : 'bg-white text-gray-900 hover:bg-gray-100'}`}
+              onClick={() => dispatch({ type: 'setModel', model: 'Power' })}
             >
               Power
             </button>
           </div>
         </div>
 
-        (
-          <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
+        <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
               <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                <span className="text-primary-600">??</span>
-                Top Factors For Your VO2
+                <span className="text-primary-600">📊</span>
+                Top Factors For Your {platform === 'VO2' ? 'VO2max' : 'Power'}
               </div>
               <div className="space-y-3">
                 {topFactors.map(([k, v]) => {
@@ -215,7 +341,7 @@ export default function GoalsPlans() {
                         <div className="h-2 bg-sky-500 rounded" style={{ width: `${Math.max(8, pct)}%` }} />
                       </div>
                       <div className="mt-1 text-xs text-gray-700">Current: {Number(v.value).toFixed(1)} - {tip}</div>
-                      <div className="text-xs text-gray-600">Impact: {v.shapValue >= 0 ? '+' : ''}{v.shapValue.toFixed(2)} ml/kg/min</div>
+                      <div className="text-xs text-gray-600">Impact: {v.shapValue >= 0 ? '+' : ''}{v.shapValue.toFixed(2)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</div>
                     </div>
                   )
                 })}
@@ -245,31 +371,29 @@ export default function GoalsPlans() {
               </div>
             </div>
           </div>
-        )}
 
-        (
-          <div className="mt-6 grid grid-cols-3 gap-6 max-lg:grid-cols-1">
+        <div className="mt-6 grid grid-cols-3 gap-6 max-lg:grid-cols-1">
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 col-span-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="text-lg font-semibold">Scenario Planner</div>
-                <div className="text-sm text-gray-700 flex items-center gap-2">Current: {predictedNow.toFixed(1)} - Target:
+                <div className="text-sm text-gray-700 flex items-center gap-2">Current: {predictedNow.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'} - Target:
                   <div className="inline-flex items-center gap-1 ml-2">
-                    <button type="button" aria-label="Decrease target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = 0.5; const minGoal = Number((predictedNow + 0.1).toFixed(1)); const base = targetVO2 ?? Number((predictedNow + step).toFixed(1)); const next = Math.max(minGoal, Number((base - step).toFixed(1))); setTargetVO2(next) }}>-</button>
-                    <input type="number" step={0.5} className="w-24 text-center rounded-md border px-2 py-1 appearance-none" value={targetVO2 ?? ''} onChange={(e) => { const val = parseFloat(e.target.value); if (Number.isNaN(val)) { setTargetVO2(null); return } const minGoal = Number((predictedNow + 0.1).toFixed(1)); setTargetVO2(Math.max(val, minGoal)) }} />
-                    <button type="button" aria-label="Increase target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = 0.5; const base = targetVO2 ?? Number((predictedNow + step).toFixed(1)); const next = Number((base + step).toFixed(1)); setTargetVO2(next) }}>+</button>
-                    <span>ml/kg/min</span>
+                    <button type="button" aria-label="Decrease target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = platform === 'VO2' ? 0.5 : 5; const minIncrement = platform === 'VO2' ? 0.1 : 1; const minGoal = Number((predictedNow + minIncrement).toFixed(1)); const base = targetValue ?? Number((predictedNow + step).toFixed(1)); const next = Math.max(minGoal, Number((base - step).toFixed(1))); setTargetValue(next) }}>-</button>
+                    <input type="number" step={platform === 'VO2' ? 0.5 : 5} className="w-24 text-center rounded-md border px-2 py-1 appearance-none" value={targetValue ?? ''} onChange={(e) => { const val = parseFloat(e.target.value); if (Number.isNaN(val)) { setTargetValue(null); return } const minIncrement = platform === 'VO2' ? 0.1 : 1; const minGoal = Number((predictedNow + minIncrement).toFixed(1)); setTargetValue(Math.max(val, minGoal)) }} />
+                    <button type="button" aria-label="Increase target" className="rounded-md border px-2 py-1 text-sm hover:bg-gray-50" onClick={() => { const step = platform === 'VO2' ? 0.5 : 5; const base = targetValue ?? Number((predictedNow + step).toFixed(1)); const next = Number((base + step).toFixed(1)); setTargetValue(next) }}>+</button>
+                    <span>{platform === 'VO2' ? 'ml/kg/min' : 'W'}</span>
                   </div>
                   <button
                     type="button"
                     className="ml-3 rounded-full bg-emerald-600 text-white px-4 py-1.5 text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50"
                     onClick={() => setPlanReady(true)}
-                    disabled={targetVO2 == null}
+                    disabled={targetValue == null}
                   >
                     Generate Plan
                   </button>
                 </div>
                 {planReady && (
-                  <div className="text-sm text-gray-600 mt-1">Estimated gain from plan: {scenarioPlan.totalGain.toFixed(1)} ml/kg/min {scenarioPlan.meets ? "Meets target" : "May need more time/consistency"}</div>
+                  <div className="text-sm text-gray-600 mt-1">Estimated gain from plan: {scenarioPlan.totalGain.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'} {scenarioPlan.meets ? "Meets target" : "May need more time/consistency"}</div>
                 )}
               </div>
             </div>
@@ -277,7 +401,7 @@ export default function GoalsPlans() {
             {planReady && (['Sleep','Recovery','Training'] as const).map((cat) => (
               <div key={cat} className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
                 <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-primary-600">{cat === 'Training' ? '??' : cat === 'Sleep' ? '??' : '??'}</span>
+                  <span className="text-primary-600">{cat === 'Training' ? '🏃' : cat === 'Sleep' ? '😴' : '💪'}</span>
                   {cat} Plan
                 </div>
                 <div className="space-y-3">
@@ -285,10 +409,10 @@ export default function GoalsPlans() {
                     <div key={p.factor} className="rounded-lg border bg-gray-50 p-3">
                       <div className="flex items-center justify-between text-sm">
                         <div className="capitalize font-medium">{p.factor}</div>
-                        <div className="text-xs text-gray-700">+{Math.max(0, p.gain).toFixed(1)} ml/kg/min</div>
+                        <div className="text-xs text-gray-700">+{Math.max(0, p.gain).toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</div>
                       </div>
                       <div className="text-xs text-gray-700 mt-1">{p.note}</div>
-                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} {'->'} Target {p.target.toFixed(1)}</div>
+                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} → Target {p.target.toFixed(1)}</div>
                     </div>
                   ))}
                 </div>
@@ -362,8 +486,126 @@ export default function GoalsPlans() {
                 <button onClick={clearOverrides} className="rounded-full border px-5 py-2 text-sm hover:bg-gray-50">Reset</button>
               </div>
             )}
-          </div>
-        )}
+
+            {/* Digital Twin Expert Advisor - Full Chat */}
+            {planReady && (
+              <div className="col-span-3 rounded-xl border border-primary-200 bg-gradient-to-br from-primary-50 to-white p-6 shadow-lg">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white text-2xl shadow-lg">
+                    🤖
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-gray-900">Digital Twin Expert</h3>
+                    <p className="text-sm text-gray-600">AI-powered performance advisor</p>
+                  </div>
+                  {apiKey && apiKey !== 'your_openai_api_key_here' && (
+                    <div className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                      ✓ Connected
+                    </div>
+                  )}
+                </div>
+
+                {/* Error Display */}
+                {chatError && (
+                  <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
+                    <div className="flex items-start gap-2">
+                      <span className="text-red-600 text-sm">⚠️</span>
+                      <div className="flex-1">
+                        <p className="text-sm text-red-800 font-medium">Error</p>
+                        <p className="text-xs text-red-700 mt-1">{chatError}</p>
+                      </div>
+                      <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600">✕</button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Chat Messages */}
+                <div className="space-y-3 mb-4 max-h-96 overflow-y-auto">
+                  {chatMessages.map((msg, idx) => (
+                    <div key={idx} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
+                        msg.role === 'user' 
+                          ? 'bg-green-600 text-white' 
+                          : 'bg-primary-100 text-primary-600'
+                      }`}>
+                        {msg.role === 'user' ? 'You' : 'AI'}
+                      </div>
+                      <div className={`flex-1 rounded-lg p-4 shadow-sm ${
+                        msg.role === 'user'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-white border border-gray-200'
+                      }`}>
+                        <p className={`text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'text-white' : 'text-gray-700'}`}>
+                          {msg.content || (isLoading && idx === chatMessages.length - 1 ? (
+                            <span className="flex items-center gap-2">
+                              <span className="animate-pulse">Thinking...</span>
+                            </span>
+                          ) : msg.content)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Quick Questions (only show if no messages yet) */}
+                {chatMessages.length <= 1 && (
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-gray-500 text-sm font-medium">Quick questions:</span>
+                    </div>
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => handleQuickQuestion("What if I increased my training load by 20%?")}
+                        disabled={isLoading}
+                        className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
+                      >
+                        💬 "What if I increased my training load by 20%?"
+                      </button>
+                      <button 
+                        onClick={() => handleQuickQuestion("How long will it take to reach my target?")}
+                        disabled={isLoading}
+                        className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
+                      >
+                        💬 "How long will it take to reach my target?"
+                      </button>
+                      <button 
+                        onClick={() => handleQuickQuestion("What's my biggest limiter right now?")}
+                        disabled={isLoading}
+                        className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
+                      >
+                        💬 "What's my biggest limiter right now?"
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Input Area */}
+                <form onSubmit={(e) => { e.preventDefault(); sendMessage(chatInput); }} className="flex items-center gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Ask your Digital Twin anything..." 
+                    className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none text-sm"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    disabled={isLoading || !apiKey || apiKey === 'your_openai_api_key_here'}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isLoading || !chatInput.trim() || !apiKey || apiKey === 'your_openai_api_key_here'}
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? '...' : 'Send'}
+                  </button>
+                </form>
+
+                {(!apiKey || apiKey === 'your_openai_api_key_here') && (
+                  <div className="mt-3 text-xs text-center text-amber-600">
+                    ⚠️ Configure VITE_OPENAI_API_KEY in .env to enable chat
+                  </div>
+                )}
+              </div>
+            )}
+        </div>
       </div>
     </div>
   )
