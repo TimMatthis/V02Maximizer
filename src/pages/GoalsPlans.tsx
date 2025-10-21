@@ -364,7 +364,6 @@ export default function GoalsPlans() {
             Recommended target: <span className="font-semibold">{recommendedTarget.toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</span> &middot; Recommended horizon: <span className="font-semibold">{recommendedHorizon} weeks</span>
           </div>
         </div>
-        </div>
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight flex items-center gap-3">
             <span className="text-primary-600">🎯</span>
@@ -541,7 +540,7 @@ export default function GoalsPlans() {
             </div>
 
             {/* Saved Goals */}
-            {savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).length > 0 && (
+            {state.savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).length > 0 && (
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 col-span-3 mt-4">
                 <div className="text-lg font-semibold mb-2">Saved Goals</div>
                 <table className="w-full text-sm">
@@ -556,12 +555,14 @@ export default function GoalsPlans() {
                       <th className="py-1">Required</th>
                       <th className="py-1">On track</th>
                       <th className="py-1">Adj./wk</th>
-                      <th className="py-1">Focus (this week)</th>\n                      <th className="py-1">Changes</th>\n                      <th className="py-1">Plan history</th>
+                      <th className="py-1">Focus (this week)</th>
+                      <th className="py-1">Changes</th>
+                      <th className="py-1">Plan history</th>
                       <th className="py-1">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).map(g => (
+                    {state.savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).map(g => (
                       <tr key={g.id} className="border-t">
                         <td className="py-1 text-gray-700">{new Date(g.createdAt).toLocaleDateString()}</td>
                         <td className="py-1">{g.baselineAtCreation.toFixed(1)}</td>
@@ -572,14 +573,57 @@ export default function GoalsPlans() {
                         <td className="py-1">{g.status ? g.status.requiredWeeklyGain.toFixed(2) : '-'}</td>
                         <td className="py-1"><span className={g.status?.onTrack ? 'text-green-700' : 'text-amber-700'}>{g.status?.onTrack ? 'Yes' : 'Check'}</span></td>
                         <td className="py-1">{g.status ? (g.status.suggestedAdjustment ?? 0).toFixed(2) : '-'}</td>
+                        <td className="py-1">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; const foc = last ? focusFromAssumptions(last.assumptions) : focusFromAssumptions(currentPlanAssumptions); return foc.length ? foc.join(', ') : '-' })()}</td>
+                        <td className="py-1">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; if (!last) return '-'; const ch = diffPlans(last.assumptions, currentPlanAssumptions); return ch.length ? <span className="text-amber-700">{ch.length} updated</span> : <span className="text-gray-500">No change</span> })()}</td>
                         <td className="py-1">{(g.planHistory?.length ?? 0)} entries</td>
-                        <td className="py-1"><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50" onClick={() => savePlanUpdate(g.id)} title="Append current plan assumptions to this goal">Save Plan Update</button></td>
+                        <td className="py-1"><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 mr-2" onClick={() => setViewGoalId(g.id)} title="View plan history">View</button><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50" onClick={() => savePlanUpdate(g.id)} title="Append current plan assumptions to this goal">Save Plan Update</button></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
+            {viewGoalId && (() => {
+              const g = state.savedGoals.find(x => x.id === viewGoalId)
+              if (!g) return null as any
+              return (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setViewGoalId(null)}>
+                  <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-5" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-lg font-semibold">Plan History</div>
+                      <button className="text-sm border rounded px-2 py-1 hover:bg-gray-50" onClick={() => setViewGoalId(null)}>Close</button>
+                    </div>
+                    <div className="text-sm text-gray-600 mb-2">Goal created: {new Date(g.createdAt).toLocaleString()}</div>
+                    <div className="max-h-72 overflow-auto border rounded">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-gray-600">
+                            <th className="py-1 px-2">Snapshot</th>
+                            <th className="py-1 px-2">Predicted at save</th>
+                            <th className="py-1 px-2">Assumptions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(g.planHistory ?? []).map((s, i) => (
+                            <tr key={i} className="border-t align-top">
+                              <td className="py-1 px-2 whitespace-nowrap">{new Date((s as any).ts).toLocaleString()}</td>
+                              <td className="py-1 px-2">{((s as any).predictedAtSave as number).toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</td>
+                              <td className="py-1 px-2">
+                                <ul className="list-disc pl-5">
+                                  {((s as any).assumptions as any[]).map((a, j) => (
+                                    <li key={j}><span className="capitalize">{String(a.factor)}</span>: {Number(a.target).toFixed(1)}</li>
+                                  ))}
+                                </ul>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
             {planReady && (['Sleep','Recovery','Training'] as const).map((cat) => (
               <div key={cat} className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
                 <div className="text-xl font-bold mb-4 flex items-center gap-2">
