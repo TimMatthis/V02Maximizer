@@ -3,7 +3,7 @@ import type { SHAPValueItem, ModelType } from '../types'
 
 type Props = { base: number; items: SHAPValueItem[]; modelType?: ModelType }
 
-export default function SHAPWaterfall({ base, items, modelType = 'VO2' }: Props) {
+export default function SHAPWaterfall({ base, items }: Props) {
   // Build cumulative series
   let cumulative = base
   const data = [

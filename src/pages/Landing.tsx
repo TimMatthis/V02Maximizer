@@ -15,17 +15,17 @@ export default function Landing() {
           <div className="max-w-3xl">
             <div className="inline-block mb-4">
               <span className="px-4 py-1.5 rounded-full bg-primary-500/20 text-primary-300 text-xs font-semibold tracking-wide border border-primary-500/30">
-                AI-POWERED PERFORMANCE ANALYTICS
+                Explainable Performance Analytics
               </span>
             </div>
             <h1 className="text-6xl font-extrabold tracking-tight mb-6 leading-tight">
-              Maximize Your
+              Turn Training Data
               <span className="block !bg-gradient-to-r !from-emerald-400 !via-green-300 !to-lime-400 bg-clip-text !text-transparent">
-                Performance Potential
+                Into Performance Gains
               </span>
             </h1>
             <p className="text-xl text-gray-300 leading-relaxed mb-8 max-w-2xl">
-              Discover how training, recovery, and lifestyle factors impact your VO2max and power output. Get real-time SHAP insights and personalized recommendations to optimize your performance.
+              See what drives today’s VO2max and power, why it changed, and what to do next. Transparent SHAP‑style insights, goal‑aware priorities, and fast what‑if planning.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link 
@@ -43,6 +43,12 @@ export default function Landing() {
               >
                 Set Goals
               </Link>
+              <Link
+                to="/graph-demo"
+                className="px-8 py-4 rounded-xl bg-white/5 text-white font-semibold border border-white/10 hover:bg-white/10 hover:border-white/20 backdrop-blur-sm transition-all duration-300"
+              >
+                Try Graph Demo
+              </Link>
             </div>
           </div>
         </div>
@@ -58,51 +64,70 @@ export default function Landing() {
       {/* Feature Cards */}
       <section className="mx-auto max-w-7xl px-6 py-20">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-900 mb-3">Intelligent Performance Optimization</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">Make Better Training Decisions</h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Advanced machine learning meets sports science to unlock your peak performance
+            Clear, explainable analytics—no black boxes. Know which factors matter and how to act.
           </p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <FeatureCard 
             icon="📊"
-            title="Explainability" 
-            body="Dynamic SHAP analysis shows exactly which factors are boosting or limiting your performance in real-time."
+            title="Explainable Insights" 
+            body="See each factor’s push/pull on performance with transparent SHAP-style contributions—understand the ‘why’, not just the score."
             gradient="from-primary-500 to-primary-600"
           />
           <FeatureCard 
             icon="🎯"
-            title="Personalization" 
-            body="Machine learning adapts to your unique physiology, creating a model that reflects how your body responds."
+            title="Adaptive To You" 
+            body="Models learn your physiology over time, so guidance reflects how your body actually responds."
             gradient="from-athletic-cyan to-athletic-teal"
           />
           <FeatureCard 
             icon="🔬"
-            title="Scenario Modeling" 
-            body="Test different training approaches, adjust variables, and compare outcomes before committing to changes."
+            title="What‑If Planning" 
+            body="Change sleep, load, or intensity and instantly preview predicted impact—commit with confidence."
             gradient="from-athletic-orange to-athletic-amber"
           />
         </div>
       </section>
 
-      {/* Quick Start */}
+      
+
+      {/* Getting Started Guide (combined from Start) */}
       <section className="mx-auto max-w-7xl px-6 pb-20">
-        <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-lg p-8">
-          <div className="flex items-start gap-6 max-md:flex-col">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-2xl shadow-lg">
-                🚀
-              </div>
-            </div>
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Get Started in 3 Steps</h2>
-              <div className="space-y-3">
-                <Step number={1} text="View your dashboard to explore personas and understand factor influences" />
-                <Step number={2} text="Use the control panel to adjust factors and explore what-if scenarios" />
-                <Step number={3} text="Save scenarios and compare them side-by-side to find your optimal approach" />
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 rounded-2xl border border-gray-200 bg-white shadow-card p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-3">Get Started In Minutes</h2>
+            <p className="text-gray-600 mb-4">No account required for the demo.</p>
+            <ol className="list-decimal pl-6 space-y-4 text-sm text-gray-800">
+              <li>
+                <div className="font-semibold text-gray-900">Explore the Dashboard</div>
+                <p>Pick a persona, scrub the timeline, and see which factors move your numbers (SHAP).</p>
+                <Link to="/dashboard" className="inline-block mt-2 text-primary-700 underline">Open Dashboard</Link>
+              </li>
+              <li>
+                <div className="font-semibold text-gray-900">Map Factors → Performance</div>
+                <p>Use the Graph Demo to visualize a weighted factor graph and seed initial weights. Start with our sample file.</p>
+                <div className="flex gap-3 mt-2">
+                  <Link to="/graph-demo" className="text-primary-700 underline">Open Graph Demo</Link>
+                  <a href="/sample-data/talent_scout_demo.csv" className="text-primary-700 underline" download>Download sample CSV</a>
+                </div>
+              </li>
+              <li>
+                <div className="font-semibold text-gray-900">Set A Goal, Act With Focus</div>
+                <p>Create a goal in Goals & Plans; use priorities to choose the next best adjustment.</p>
+                <Link to="/goals" className="inline-block mt-2 text-primary-700 underline">Go to Goals & Plans</Link>
+              </li>
+            </ol>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-card p-6">
+            <div className="font-semibold text-gray-900 mb-2">Tips</div>
+            <ul className="list-disc pl-5 text-sm text-gray-700 space-y-2">
+              <li>Green edges in Graph Demo mean positive influence; red mean negative; edge width = strength.</li>
+              <li>“Update Weights” nudges edges toward recent data (EMA). Turn on goal‑aware updates to emphasize progress.</li>
+              <li>Use factor controls on the Dashboard to test what‑ifs and see SHAP re‑balance instantly.</li>
+            </ul>
           </div>
         </div>
       </section>
@@ -123,13 +148,4 @@ function FeatureCard({ icon, title, body, gradient }: { icon: string; title: str
   )
 }
 
-function Step({ number, text }: { number: number; text: string }) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 text-white flex items-center justify-center text-sm font-bold shadow-md">
-        {number}
-      </div>
-      <p className="text-gray-700 pt-0.5">{text}</p>
-    </div>
-  )
-}
+// Step component removed after consolidating the getting started sections

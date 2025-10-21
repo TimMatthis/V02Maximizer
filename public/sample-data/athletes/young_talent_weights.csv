@@ -1,0 +1,7 @@
+factor,weight,uncertainty,n_obs,updated_at,method
+sleep_hours,0.40,0.11,5,2025-01-05T12:00:00Z,corr_baseline
+hr_variability,0.50,0.10,5,2025-01-05T12:00:00Z,corr_baseline
+training_load,0.44,0.12,5,2025-01-05T12:00:00Z,corr_baseline
+carbs_g,0.24,0.15,5,2025-01-05T12:00:00Z,corr_baseline
+stress_level,-0.35,0.13,5,2025-01-05T12:00:00Z,corr_baseline
+resting_hr,-0.33,0.14,5,2025-01-05T12:00:00Z,corr_baseline

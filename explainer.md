@@ -16,6 +16,13 @@
 4. Priorities and thresholds generate actionable guidance; users can adjust factors, save scenarios, and compare.
 5. Optional: Connect Oura via the server, and chat with the Digital Twin advisor.
 
+### Graph weighting flow (POC)
+- Upload CSV in `/graph-demo` (wide format: factors + `performance`).
+- Initial weights: compute a small ridge regression on standardized data and set Factor → Performance edge weights from normalized coefficients (SHAP-like seed for linear models).
+- Goal-aware updates (optional): load goals to nudge online updates toward progress on the target metric.
+- Online updates: use EMA on the most recent window to update weights; toggle goal-aware to emphasize progress.
+- Recommendations: list top factors with direction (increase/reduce) based on current weights. Demo-only guidance, apply domain constraints before acting.
+
 ### Frontend architecture
 - **Entry & routing**
   - `src/main.tsx`: Bootstraps React and renders `App`.

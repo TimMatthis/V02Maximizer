@@ -57,12 +57,20 @@ RESPONSE STYLE:
 For ${context.personaType === 'Existing Elite' ? 'elite athletes, focus on marginal gains and periodization' : context.personaType === 'Active Weekender' ? 'recreational athletes, emphasize recovery and sustainable progress' : 'developing athletes, focus on balanced development and building foundations'}.`
 }
 
+function resolveApiKey(explicitKey?: string): string {
+  const fromArg = explicitKey || ''
+  const fromLocal = (typeof window !== 'undefined') ? (localStorage.getItem('vo2_openai_key') || '') : ''
+  const fromEnv = (import.meta as any)?.env?.VITE_OPENAI_API_KEY || ''
+  return fromArg || fromLocal || fromEnv
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
-  apiKey: string
+  apiKey?: string
 ): Promise<string> {
-  if (!apiKey || apiKey === 'your_openai_api_key_here') {
-    throw new Error('Please configure your OpenAI API key in .env file')
+  const key = resolveApiKey(apiKey)
+  if (!key || key === 'your_openai_api_key_here') {
+    throw new Error('OpenAI key missing. Enter it in the chat panel or set VITE_OPENAI_API_KEY locally (not recommended for prod).')
   }
 
   try {
@@ -70,7 +78,7 @@ export async function sendChatMessage(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${key}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini', // Using gpt-4o-mini for cost-effectiveness
@@ -95,11 +103,12 @@ export async function sendChatMessage(
 
 export async function sendChatMessageStreaming(
   messages: ChatMessage[],
-  apiKey: string,
+  apiKey: string | undefined,
   onChunk: (chunk: string) => void
 ): Promise<void> {
-  if (!apiKey || apiKey === 'your_openai_api_key_here') {
-    throw new Error('Please configure your OpenAI API key in .env file')
+  const key = resolveApiKey(apiKey)
+  if (!key || key === 'your_openai_api_key_here') {
+    throw new Error('OpenAI key missing. Enter it in the chat panel or set VITE_OPENAI_API_KEY locally (not recommended for prod).')
   }
 
   try {
@@ -107,7 +116,7 @@ export async function sendChatMessageStreaming(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${key}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',

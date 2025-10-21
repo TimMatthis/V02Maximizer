@@ -6,6 +6,7 @@ import { SimplifiedTreeSHAP } from '../utils/shapSimplified'
 import { calculatePriorities, severityStyles } from '../utils/priority'
 import { factorParameters, factorResponseFunctions } from '../utils/responseCurves'
 import { buildSystemPrompt, sendChatMessageStreaming, type ChatMessage } from '../utils/openai'
+import ApiKeyModal from '../components/ApiKeyModal'
 
 export default function GoalsPlans() {
   const { state, dispatch } = useAppState()
@@ -22,7 +23,12 @@ export default function GoalsPlans() {
   const [chatInput, setChatInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY || ''
+  // API key gating (BYOK)
+  const [showKeyModal, setShowKeyModal] = useState(false)
+  const [sessionKey, setSessionKey] = useState<string>('')
+  const envKey = (import.meta as any).env?.VITE_OPENAI_API_KEY || ''
+  const storedKey = (() => { try { return localStorage.getItem('vo2_openai_key') || '' } catch { return '' } })()
+  const apiKey = sessionKey || storedKey || envKey
 
   const currentFeatures: FeatureWeights = useMemo(() => ({
     trainingLoad: state.factorOverrides.trainingLoad ?? day.trainingLoad,
@@ -124,10 +130,10 @@ export default function GoalsPlans() {
 
   // Evaluate saved goals for this persona/metric whenever prediction updates
   useEffect(() => {
-    const goals = savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform)
+    const goals = savedGoals.filter((g: Goal) => g.personaId === persona.profile.id && g.metric === platform)
     if (goals.length === 0) return
     const now = new Date()
-    goals.forEach(g => {
+    goals.forEach((g: Goal) => {
       const weeksElapsed = Math.max(0, (now.getTime() - new Date(g.createdAt).getTime()) / (7 * 86400000))
       const current = Number(predictedNow.toFixed(2))
       const delta = current - g.baselineAtCreation
@@ -212,7 +218,7 @@ export default function GoalsPlans() {
     if (!userMessage.trim() || isLoading) return
     
     if (!apiKey || apiKey === 'your_openai_api_key_here') {
-      setChatError('Please configure your OpenAI API key in .env file (VITE_OPENAI_API_KEY)')
+      setShowKeyModal(true)
       return
     }
 
@@ -336,8 +342,23 @@ export default function GoalsPlans() {
     const topLimited = combinedTop.slice(0, 5)
     const totalGain = topLimited.reduce((s, p) => s + Math.max(0, p.gain), 0)
     return { byCategory: proposals, totalGain, meets: totalGain >= delta - 0.2 }
+
   }, [targetValue, predictedNow, currentFeatures, backgroundMean])
 
+
+  type Assumption = { factor: keyof FeatureWeights; target: number }
+  const currentPlanAssumptions: Assumption[] = useMemo(() => (
+    Object.values(scenarioPlan.byCategory).flat().map(p => ({ factor: p.factor as keyof FeatureWeights, target: p.target }))
+  ), [scenarioPlan])
+
+  function diffPlans(a: Assumption[], b: Assumption[]) {
+    const map = new Map(a.map(x => [x.factor, x.target]))
+    const changes: string[] = []
+    for (const x of b) {
+      if (map.get(x.factor) !== x.target) changes.push(String(x.factor))
+    }
+    return changes
+  }
   function applyScenarioPlan() {
     const items = Object.values(scenarioPlan.byCategory).flat()
     for (const p of items) {
@@ -366,7 +387,7 @@ export default function GoalsPlans() {
         </div>
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight flex items-center gap-3">
-            <span className="text-primary-600">🎯</span>
+            <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-primary-600"></span>
             Goals & Training Plans
           </h1>
         </div>
@@ -374,7 +395,7 @@ export default function GoalsPlans() {
         {/* Athlete Profile Selector */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-5 mb-6">
           <div className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <span className="text-primary-600">👤</span>
+            <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-primary-600"></span>
             Athlete Profile
           </div>
           <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
@@ -432,7 +453,7 @@ export default function GoalsPlans() {
         <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
               <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                <span className="text-primary-600">📊</span>
+                <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-primary-600"></span>
                 Top Factors For Your {platform === 'VO2' ? 'VO2max' : 'Power'}
               </div>
               <div className="space-y-3">
@@ -462,7 +483,7 @@ export default function GoalsPlans() {
 
             <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
               <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                <span className="text-primary-600">📈</span>
+                <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-primary-600"></span>
                 Simple Plan (Targets What Matters)
               </div>
               <div className="space-y-3">
@@ -543,40 +564,46 @@ export default function GoalsPlans() {
             {state.savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).length > 0 && (
               <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 col-span-3 mt-4">
                 <div className="text-lg font-semibold mb-2">Saved Goals</div>
-                <table className="w-full text-sm">
+                <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="text-left text-gray-600">
-                      <th className="py-1">Created</th>
-                      <th className="py-1">Baseline</th>
-                      <th className="py-1">Target</th>
-                      <th className="py-1">Horizon</th>
-                      <th className="py-1">Current</th>
-                      <th className="py-1">Weekly</th>
-                      <th className="py-1">Required</th>
-                      <th className="py-1">On track</th>
-                      <th className="py-1">Adj./wk</th>
-                      <th className="py-1">Focus (this week)</th>
-                      <th className="py-1">Changes</th>
-                      <th className="py-1">Plan history</th>
-                      <th className="py-1">Actions</th>
+                    <tr className="text-xs uppercase tracking-wide text-gray-500">
+                      <th className="py-2 text-left">Created</th>
+                      <th className="py-2 text-right">Baseline</th>
+                      <th className="py-2 text-right">Target</th>
+                      <th className="py-2 text-right">Horizon</th>
+                      <th className="py-2 text-right">Current</th>
+                      <th className="py-2 text-right">Weekly</th>
+                      <th className="py-2 text-right">Required</th>
+                      <th className="py-2 text-left">On track</th>
+                      <th className="py-2 text-right">Adj./wk</th>
+                      <th className="py-2 text-left">Focus (this week)</th>
+                      <th className="py-2 text-left">Changes</th>
+                      <th className="py-2 text-left">Plan history</th>
+                      <th className="py-2 text-left">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="border-t">
                     {state.savedGoals.filter(g => g.personaId === persona.profile.id && g.metric === platform).map(g => (
-                      <tr key={g.id} className="border-t">
-                        <td className="py-1 text-gray-700">{new Date(g.createdAt).toLocaleDateString()}</td>
-                        <td className="py-1">{g.baselineAtCreation.toFixed(1)}</td>
-                        <td className="py-1">{g.target.toFixed(1)}</td>
-                        <td className="py-1">{g.horizonWeeks}w</td>
-                        <td className="py-1">{g.status?.current?.toFixed(1) ?? '-'}</td>
-                        <td className="py-1">{g.status ? g.status.weeklyProgress.toFixed(2) : '-'}</td>
-                        <td className="py-1">{g.status ? g.status.requiredWeeklyGain.toFixed(2) : '-'}</td>
-                        <td className="py-1"><span className={g.status?.onTrack ? 'text-green-700' : 'text-amber-700'}>{g.status?.onTrack ? 'Yes' : 'Check'}</span></td>
-                        <td className="py-1">{g.status ? (g.status.suggestedAdjustment ?? 0).toFixed(2) : '-'}</td>
-                        <td className="py-1">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; const foc = last ? focusFromAssumptions(last.assumptions) : focusFromAssumptions(currentPlanAssumptions); return foc.length ? foc.join(', ') : '-' })()}</td>
-                        <td className="py-1">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; if (!last) return '-'; const ch = diffPlans(last.assumptions, currentPlanAssumptions); return ch.length ? <span className="text-amber-700">{ch.length} updated</span> : <span className="text-gray-500">No change</span> })()}</td>
-                        <td className="py-1">{(g.planHistory?.length ?? 0)} entries</td>
-                        <td className="py-1"><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50 mr-2" onClick={() => setViewGoalId(g.id)} title="View plan history">View</button><button className="rounded border px-2 py-1 text-xs hover:bg-gray-50" onClick={() => savePlanUpdate(g.id)} title="Append current plan assumptions to this goal">Save Plan Update</button></td>
+                      <tr key={g.id} className="border-b last:border-b-0">
+                        <td className="py-2 text-gray-700 whitespace-nowrap">{new Date(g.createdAt).toLocaleDateString()}</td>
+                        <td className="py-2 text-right tabular-nums">{g.baselineAtCreation.toFixed(1)}</td>
+                        <td className="py-2 text-right tabular-nums">{g.target.toFixed(1)}</td>
+                        <td className="py-2 text-right whitespace-nowrap">{g.horizonWeeks}w</td>
+                        <td className="py-2 text-right tabular-nums">{g.status?.current?.toFixed(1) ?? '-'}</td>
+                        <td className="py-2 text-right tabular-nums">{g.status ? g.status.weeklyProgress.toFixed(2) : '-'}</td>
+                        <td className="py-2 text-right tabular-nums">{g.status ? g.status.requiredWeeklyGain.toFixed(2) : '-'}</td>
+                        <td className="py-2">{g.status ? (g.status.onTrack ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">On track</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Needs attention</span>
+                        )) : (
+                          <span className="text-gray-500 text-xs">-</span>
+                        )}</td>
+                        <td className="py-2 text-right tabular-nums">{g.status ? (g.status.suggestedAdjustment ?? 0).toFixed(2) : '-'}</td>
+                        <td className="py-2"><div className="max-w-[42ch] text-sm text-gray-700 leading-snug">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; const foc = last ? focusFromAssumptions(last.assumptions) : focusFromAssumptions(currentPlanAssumptions); return foc.length ? foc.join(', ') : '-' })()}</div></td>
+                        <td className="py-2">{(() => { const last = g.planHistory && g.planHistory[g.planHistory.length - 1]; if (!last) return '-'; const ch = diffPlans(last.assumptions, currentPlanAssumptions); return ch.length ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">{ch.length} updated</span> : <span className="text-gray-500 text-xs">No change</span> })()}</td>
+                        <td className="py-2 text-gray-700 text-sm">{(g.planHistory?.length ?? 0)} entries</td>
+                        <td className="py-2 whitespace-nowrap"><button className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50 mr-2" onClick={() => setViewGoalId(g.id)} title="View plan history">View</button><button className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium hover:bg-gray-50" onClick={() => savePlanUpdate(g.id)} title="Append current plan assumptions to this goal">Save Plan Update</button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -627,7 +654,7 @@ export default function GoalsPlans() {
             {planReady && (['Sleep','Recovery','Training'] as const).map((cat) => (
               <div key={cat} className="rounded-xl border border-gray-200 bg-white shadow-sm p-6">
                 <div className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-primary-600">{cat === 'Training' ? '🏃' : cat === 'Sleep' ? '😴' : '💪'}</span>
+                  <span className="text-primary-600">{cat === 'Training' ? '' : cat === 'Sleep' ? '' : ''}</span>
                   {cat} Plan
                 </div>
                 <div className="space-y-3">
@@ -638,7 +665,7 @@ export default function GoalsPlans() {
                         <div className="text-xs text-gray-700">+{Math.max(0, p.gain).toFixed(1)} {platform === 'VO2' ? 'ml/kg/min' : 'W'}</div>
                       </div>
                       <div className="text-xs text-gray-700 mt-1">{p.note}</div>
-                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} → Target {p.target.toFixed(1)}</div>
+                      <div className="text-xs text-gray-600">Current {p.current.toFixed(1)} ? Target {p.target.toFixed(1)}</div>
                     </div>
                   ))}
                 </div>
@@ -718,7 +745,7 @@ export default function GoalsPlans() {
               <div className="col-span-3 rounded-xl border border-primary-200 bg-gradient-to-br from-primary-50 to-white p-6 shadow-lg">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center text-white text-2xl shadow-lg">
-                    🤖
+                    ??
                   </div>
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-gray-900">Digital Twin Expert</h3>
@@ -726,7 +753,7 @@ export default function GoalsPlans() {
                   </div>
                   {apiKey && apiKey !== 'your_openai_api_key_here' && (
                     <div className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                      ✓ Connected
+                      ? Connected
                     </div>
                   )}
                 </div>
@@ -735,12 +762,12 @@ export default function GoalsPlans() {
                 {chatError && (
                   <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
                     <div className="flex items-start gap-2">
-                      <span className="text-red-600 text-sm">⚠️</span>
+                      <span className="text-red-600 text-sm">??</span>
                       <div className="flex-1">
                         <p className="text-sm text-red-800 font-medium">Error</p>
                         <p className="text-xs text-red-700 mt-1">{chatError}</p>
                       </div>
-                      <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600">✕</button>
+                      <button onClick={() => setChatError(null)} className="text-red-400 hover:text-red-600">?</button>
                     </div>
                   </div>
                 )}
@@ -785,21 +812,21 @@ export default function GoalsPlans() {
                         disabled={isLoading}
                         className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
                       >
-                        💬 "What if I increased my training load by 20%?"
+                        ?? "What if I increased my training load by 20%?"
                       </button>
                       <button 
                         onClick={() => handleQuickQuestion("How long will it take to reach my target?")}
                         disabled={isLoading}
                         className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
                       >
-                        💬 "How long will it take to reach my target?"
+                        ?? "How long will it take to reach my target?"
                       </button>
                       <button 
                         onClick={() => handleQuickQuestion("What's my biggest limiter right now?")}
                         disabled={isLoading}
                         className="w-full text-left px-3 py-2 rounded-md bg-white border border-gray-300 hover:border-green-400 hover:bg-green-50 transition-all text-sm text-gray-700 disabled:opacity-50"
                       >
-                        💬 "What's my biggest limiter right now?"
+                        ?? "What's my biggest limiter right now?"
                       </button>
                     </div>
                   </div>
@@ -813,29 +840,53 @@ export default function GoalsPlans() {
                     className="flex-1 px-4 py-2 rounded-lg border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none text-sm"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    disabled={isLoading || !apiKey || apiKey === 'your_openai_api_key_here'}
+                    disabled={isLoading}
                   />
                   <button 
                     type="submit"
-                    disabled={isLoading || !chatInput.trim() || !apiKey || apiKey === 'your_openai_api_key_here'}
+                    disabled={isLoading || !chatInput.trim()}
                     className="px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? '...' : 'Send'}
                   </button>
                 </form>
 
-                {(!apiKey || apiKey === 'your_openai_api_key_here') && (
-                  <div className="mt-3 text-xs text-center text-amber-600">
-                    ⚠️ Configure VITE_OPENAI_API_KEY in .env to enable chat
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-xs text-gray-500">
+                    {apiKey ? 'Key loaded (local/session)' : 'No key set'}
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setShowKeyModal(true)} className="text-xs underline">Set Key</button>
+                    {apiKey && (
+                      <button onClick={() => { try { localStorage.removeItem('vo2_openai_key') } catch {}; setSessionKey('') }} className="text-xs underline">Clear</button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
+
+            <ApiKeyModal
+              isOpen={showKeyModal}
+              onClose={() => setShowKeyModal(false)}
+              onSave={(key, remember) => {
+                if (remember) {
+                  try { localStorage.setItem('vo2_openai_key', key) } catch {}
+                } else {
+                  setSessionKey(key)
+                }
+                setShowKeyModal(false)
+                setChatError(null)
+              }}
+            />
         </div>
       </div>
     </div>
   )
 }
+
+
+
+
 
 
 

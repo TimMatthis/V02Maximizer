@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAppState } from '../state/AppState'
 import { POPULATION_WEIGHTS_VO2, POPULATION_WEIGHTS_POWER } from '../utils/personas'
-import AdvancedFactorControls from '../components/AdvancedFactorControls'
 import SingleFactorControl from '../components/SingleFactorControl'
 import DualTimeline from '../components/DualTimeline'
 import PredictionDisplay from '../components/PredictionDisplay'
@@ -15,7 +14,6 @@ import Insights from '../components/Insights'
 import DependencyPlots from '../components/DependencyPlots'
 import type { FeatureWeights } from '../types'
 import { SimplifiedTreeSHAP } from '../utils/shapSimplified'
-import PriorityPanel from '../components/PriorityPanel'
 import ThresholdWarningBanner from '../components/ThresholdWarningBanner'
 import { thresholdChecks } from '../utils/thresholds'
 
@@ -94,8 +92,11 @@ export default function DashboardView() {
 
   const [activeTab, setActiveTab] = useState<'waterfall' | 'force' | 'importance' | 'dependency'>('waterfall')
   const warnings = thresholdChecks(currentFeatures, history)
+  const [showGuide, setShowGuide] = useState(() => {
+    try { return localStorage.getItem('dash_guide_dismissed') !== '1' } catch { return true }
+  })
 
-  return (
+return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white text-gray-900">
       <ThresholdWarningBanner warnings={warnings} />
       <div className="mx-auto max-w-7xl px-6 py-3">
@@ -104,6 +105,31 @@ export default function DashboardView() {
             {personalizationLabel}
           </div>
         </div>
+        {showGuide && (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 p-4 text-sm flex items-start gap-3">
+            <div className="font-bold">Welcome</div>
+            <div className="flex-1">
+              <div>How to use this dashboard:</div>
+              <ol className="list-decimal pl-5 mt-1 space-y-1">
+                <li>Select a persona and scrub the timeline.</li>
+                <li>Review SHAP to see which factors influence performance.</li>
+                <li>Adjust factor sliders to test what‑if scenarios.</li>
+                <li>Use Priorities and set a goal in Goals & Plans.</li>
+              </ol>
+              <div className="mt-2">
+                <a href="/graph-demo" className="underline">Try Graph Demo</a>
+                <span className="mx-2">·</span>
+                <a href="/data" className="underline">Connect Data</a>
+              </div>
+            </div>
+            <button
+              onClick={() => { try { localStorage.setItem('dash_guide_dismissed','1') } catch {} ; setShowGuide(false) }}
+              className="ml-auto text-xs border px-2 py-1 rounded bg-white hover:bg-gray-50"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
       </div>
       <main className="mx-auto grid max-w-7xl grid-cols-12 gap-6 px-6 pb-8">
         <aside className="col-span-3 rounded-2xl border border-gray-200 bg-white shadow-card hover:shadow-card-hover transition-all duration-300 p-4 max-lg:col-span-12 sticky top-24 self-start">

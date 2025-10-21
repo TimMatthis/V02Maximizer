@@ -1,0 +1,4 @@
+goal_name,metric,target,target_date,current,baseline,delta,weekly_gain_required,horizon_weeks,confidence,last_7d_mean,last_7d_std,trend_7d,best_session,worst_session
+10w Power Gain,Power,250,2025-02-28,240,220,20,2.5,8,0.7,224,13,up,2025-01-05,2025-01-01
+Improve HRV,HRV,68,2025-02-28,65,58,7,0.9,8,0.6,61.2,4.9,up,2025-01-05,2025-01-01
+Reduce Resting HR,RestingHR,60,2025-02-28,61,64,-3,-0.4,8,0.6,61.8,1.5,down,2025-01-05,2025-01-01

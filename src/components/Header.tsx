@@ -22,6 +22,7 @@ export default function Header() {
           <NavLink to="/dashboard" className={({isActive}) => navClass(isActive)}>Dashboard</NavLink>
           <NavLink to="/goals" className={({isActive}) => navClass(isActive)}>Goals</NavLink>
           <NavLink to="/data" className={({isActive}) => navClass(isActive)}>Data</NavLink>
+          <NavLink to="/graph-demo" className={({isActive}) => navClass(isActive)}>Graph Demo</NavLink>
         </nav>
       </div>
       <div className="h-1 bg-gradient-to-r from-primary-400 via-primary-500 to-primary-600"></div>

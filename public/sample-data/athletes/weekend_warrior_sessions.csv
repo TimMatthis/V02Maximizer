@@ -1,0 +1,6 @@
+user_id,session_ts,performance,sleep_hours,hr_variability,training_load,carbs_g,stress_level,resting_hr
+weekend_warrior,2025-01-01,205,5.8,52,60,180,7,64
+weekend_warrior,2025-01-02,215,6.5,56,75,220,6,63
+weekend_warrior,2025-01-03,225,7.2,60,90,240,5,62
+weekend_warrior,2025-01-04,235,7.8,63,110,260,4,61
+weekend_warrior,2025-01-05,240,8.0,65,120,280,4,61

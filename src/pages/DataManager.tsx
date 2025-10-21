@@ -15,7 +15,7 @@ export default function DataManager() {
             <span className="text-primary-600">🔗</span>
             Data Pipeline & Management
           </h1>
-          <p className="text-lg text-gray-600">Connect your fitness data sources and manage your training pipeline</p>
+          <p className="text-lg text-gray-600">Connect your fitness data sources and manage your training pipeline. <a href="/start" className="text-primary-700 underline">New? See Getting Started</a></p>
         </div>
 
         <section className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">

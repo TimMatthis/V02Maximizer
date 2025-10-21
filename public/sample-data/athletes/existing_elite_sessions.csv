@@ -1,0 +1,6 @@
+user_id,session_ts,performance,sleep_hours,hr_variability,training_load,carbs_g,stress_level,resting_hr
+existing_elite,2025-01-01,335,7.5,78,140,350,3,50
+existing_elite,2025-01-02,340,7.6,80,150,360,3,49
+existing_elite,2025-01-03,350,7.8,82,160,370,3,49
+existing_elite,2025-01-04,355,7.9,83,170,380,2,48
+existing_elite,2025-01-05,360,8.0,84,180,390,2,48

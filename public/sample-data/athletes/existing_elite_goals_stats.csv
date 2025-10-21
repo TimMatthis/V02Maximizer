@@ -1,0 +1,4 @@
+goal_name,metric,target,target_date,current,baseline,delta,weekly_gain_required,horizon_weeks,confidence,last_7d_mean,last_7d_std,trend_7d,best_session,worst_session
+Maintain Peak Power,Power,365,2025-02-28,360,340,25,0.6,8,0.8,348,9,flat,2025-01-05,2025-01-01
+Sustain HRV,HRV,85,2025-02-28,84,80,5,0.2,8,0.8,81.4,2.2,up,2025-01-05,2025-01-01
+Lower Resting HR,RestingHR,47,2025-02-28,48,50,-3,-0.2,8,0.7,48.8,0.8,down,2025-01-05,2025-01-01
